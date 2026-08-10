@@ -17,7 +17,7 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 import toee_apply_korean_translation as core
 
 APP_NAME = "TOEE 한국어 통합 패치 설치기"
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.3.0"
 SETTINGS_DIR = Path(os.environ.get("APPDATA", Path.home())) / "TOEE_Korean_Installer"
 SETTINGS_FILE = SETTINGS_DIR / "settings.json"
 
@@ -40,11 +40,6 @@ def normalize_tpdata(path: Path) -> Path:
             return tuple(out)
         return sorted(apps, key=key, reverse=True)[0] / "tpdata"
     return path
-
-
-def default_tpdata() -> Path | None:
-    found = core.latest_templeplus_tpdata()
-    return found.resolve() if found else None
 
 
 def default_output(game_root: Path | None) -> Path:
@@ -70,8 +65,8 @@ class InstallerApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(f"{APP_NAME} v{APP_VERSION}")
-        self.geometry("860x690")
-        self.minsize(780, 620)
+        self.geometry("920x770")
+        self.minsize(820, 680)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
         self.q: queue.Queue[tuple[str, object]] = queue.Queue()
@@ -83,7 +78,7 @@ class InstallerApp(tk.Tk):
         self.xlsx_var = tk.StringVar()
         self.output_var = tk.StringVar()
         self.mode_var = tk.StringVar(value="install")
-        self.status_var = tk.StringVar(value="경로를 지정한 뒤 사전 검사를 실행하세요.")
+        self.status_var = tk.StringVar(value="TOEE와 TemplePlus 설치 위치를 직접 지정한 뒤 사전 검사를 실행하세요.")
 
         self._build_ui()
         self._load_settings()
@@ -97,19 +92,47 @@ class InstallerApp(tk.Tk):
         header.grid(row=0, column=0, sticky="ew")
         header.columnconfigure(0, weight=1)
         ttk.Label(header, text="Temple of Elemental Evil 한국어 통합 패치", font=("Malgun Gothic", 16, "bold")).grid(row=0, column=0, sticky="w")
-        ttk.Label(header, text="TOEE / Circle of Eight / TemplePlus 경로를 직접 지정합니다.").grid(row=1, column=0, sticky="w", pady=(4, 0))
+        ttk.Label(header, text="TOEE / Circle of Eight / TemplePlus 설치 위치는 사용자가 직접 지정합니다. 아래 경로는 예시입니다.").grid(row=1, column=0, sticky="w", pady=(4, 0))
 
         paths = ttk.LabelFrame(self, text="경로 설정", padding=12)
         paths.grid(row=1, column=0, sticky="ew", padx=18, pady=(4, 8))
         paths.columnconfigure(1, weight=1)
 
-        self._path_row(paths, 0, "TOEE 설치 폴더", self.game_var, self.pick_game)
-        self._path_row(paths, 1, "TemplePlus tpdata", self.tp_var, self.pick_tpdata, extra=("자동 찾기", self.auto_tpdata))
-        self._path_row(paths, 2, "최종 번역 XLSX", self.xlsx_var, self.pick_xlsx)
-        self._path_row(paths, 3, "패치 출력 폴더", self.output_var, self.pick_output)
+        self._path_row(
+            paths,
+            0,
+            "TOEE 설치 폴더",
+            self.game_var,
+            self.pick_game,
+            r"예: C:\GOG Games\Temple of Elemental Evil  (data와 modules\ToEE가 보이는 게임 루트)",
+        )
+        self._path_row(
+            paths,
+            2,
+            "TemplePlus tpdata",
+            self.tp_var,
+            self.pick_tpdata,
+            r"예: C:\Users\<사용자>\AppData\Local\TemplePlus\app-1.0.xx\tpdata",
+        )
+        self._path_row(
+            paths,
+            4,
+            "최종 번역 XLSX",
+            self.xlsx_var,
+            self.pick_xlsx,
+            r"예: TOEE_Translation_FILTERED_v2.xlsx",
+        )
+        self._path_row(
+            paths,
+            6,
+            "패치 출력 폴더",
+            self.output_var,
+            self.pick_output,
+            r"예: C:\Users\<사용자>\Desktop\TOEE_Korean_Patch_Output  (패치 파일만 생성할 때 사용)",
+        )
 
         mode = ttk.Frame(paths)
-        mode.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(10, 2))
+        mode.grid(row=8, column=0, columnspan=3, sticky="ew", pady=(10, 2))
         ttk.Label(mode, text="실행 방식:").pack(side="left")
         ttk.Radiobutton(mode, text="통합 설치 (권장)", variable=self.mode_var, value="install").pack(side="left", padx=(12, 6))
         ttk.Radiobutton(mode, text="패치 파일만 생성", variable=self.mode_var, value="build").pack(side="left", padx=6)
@@ -141,16 +164,17 @@ class InstallerApp(tk.Tk):
         footer.grid(row=3, column=0, sticky="ew")
         footer.columnconfigure(0, weight=1)
         ttk.Label(footer, textvariable=self.status_var).grid(row=0, column=0, sticky="w")
-        ttk.Label(footer, text="직접 설치는 전체 검증 성공 후에만 실행되며, 날짜별 백업 폴더를 남깁니다.").grid(row=1, column=0, sticky="w", pady=(4, 0))
+        ttk.Label(footer, text="예시 경로는 안내용이며 강제되지 않습니다. 직접 설치는 전체 검증 성공 후에만 실행되고 날짜별 백업을 남깁니다.").grid(row=1, column=0, sticky="w", pady=(4, 0))
 
-    def _path_row(self, parent, row, label, var, command, extra=None):
-        ttk.Label(parent, text=label, width=18).grid(row=row, column=0, sticky="w", pady=4)
-        ttk.Entry(parent, textvariable=var).grid(row=row, column=1, sticky="ew", padx=(6, 6), pady=4)
+    def _path_row(self, parent, row, label, var, command, hint):
+        ttk.Label(parent, text=label, width=18).grid(row=row, column=0, sticky="w", pady=(4, 1))
+        ttk.Entry(parent, textvariable=var).grid(row=row, column=1, sticky="ew", padx=(6, 6), pady=(4, 1))
         buttons = ttk.Frame(parent)
-        buttons.grid(row=row, column=2, sticky="e")
+        buttons.grid(row=row, column=2, sticky="e", pady=(4, 1))
         ttk.Button(buttons, text="찾아보기", command=command).pack(side="left")
-        if extra:
-            ttk.Button(buttons, text=extra[0], command=extra[1]).pack(side="left", padx=(4, 0))
+        ttk.Label(parent, text=hint, foreground="#666666", font=("Malgun Gothic", 8)).grid(
+            row=row + 1, column=1, columnspan=2, sticky="w", padx=(8, 0), pady=(0, 5)
+        )
 
     def _load_settings(self):
         try:
@@ -162,10 +186,6 @@ class InstallerApp(tk.Tk):
         self.xlsx_var.set(data.get("xlsx", ""))
         self.output_var.set(data.get("output", ""))
         self.mode_var.set(data.get("mode", "install"))
-        if not self.tp_var.get():
-            tp = default_tpdata()
-            if tp:
-                self.tp_var.set(str(tp))
 
     def _save_settings(self):
         SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -189,14 +209,6 @@ class InstallerApp(tk.Tk):
         p = filedialog.askdirectory(title="TemplePlus tpdata 폴더 선택")
         if p:
             self.tp_var.set(str(normalize_tpdata(Path(p))))
-
-    def auto_tpdata(self):
-        p = default_tpdata()
-        if p:
-            self.tp_var.set(str(p))
-            self.status_var.set(f"TemplePlus 자동 감지: {p}")
-        else:
-            messagebox.showwarning(APP_NAME, "TemplePlus tpdata를 자동으로 찾지 못했습니다. 직접 지정해 주세요.")
 
     def pick_xlsx(self):
         p = filedialog.askopenfilename(title="최종 번역 XLSX 선택", filetypes=[("Excel workbook", "*.xlsx"), ("All files", "*.*")])

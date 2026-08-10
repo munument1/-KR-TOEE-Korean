@@ -6,6 +6,8 @@ on:
     paths:
       - "tools/toee_korean_installer_gui.pyw"
       - "tools/toee_apply_korean_translation.py"
+      - "tools/toee_font_bundle_hook.py"
+      - "font/**"
       - ".github/workflows/build-windows-installer.yml"
 
 permissions:
@@ -24,6 +26,26 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Validate bundled fonts
+        shell: pwsh
+        run: |
+          $fonts = @{
+            "font/tpdata/fonts/NanumBarunGothic.ttf" = "9b872773134e2e4d8c0b17021266786576db06c843ede0d0b523b214a450756c"
+            "font/tpdata/fonts/NanumBarunGothicBold.ttf" = "39bba4cd9bd2986143825c8654abbb62443914ab33b346c0c929a916f5d98bf2"
+            "font/tpdata/fonts/GraceSerif-Regular.ttf" = "33eb8227c4ecd0cfa4e4ec18d9f448a9530dfc36bb8034bf3b409b572aba64d1"
+            "font/tpdata/fonts/GraceSerif-Bold.ttf" = "bbdc46f95144d4705c03b2b93da43464adc71ad8c3519702c7e0f04ae8b75d25"
+          }
+          foreach ($entry in $fonts.GetEnumerator()) {
+            if (-not (Test-Path $entry.Key)) {
+              throw "Missing required font: $($entry.Key)"
+            }
+            $actual = (Get-FileHash -Algorithm SHA256 $entry.Key).Hash.ToLowerInvariant()
+            if ($actual -ne $entry.Value) {
+              throw "SHA-256 mismatch: $($entry.Key) expected=$($entry.Value) actual=$actual"
+            }
+            Write-Host "OK $($entry.Key) $actual"
+          }
+
       - name: Install build dependencies
         shell: pwsh
         run: |
@@ -40,6 +62,8 @@ jobs:
             --windowed `
             --name TOEE_Korean_Installer `
             --paths tools `
+            --runtime-hook tools/toee_font_bundle_hook.py `
+            --add-data "font/tpdata;resources/font/tpdata" `
             tools/toee_korean_installer_gui.pyw
 
       - name: Upload EXE artifact

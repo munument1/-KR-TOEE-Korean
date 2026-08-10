@@ -33,14 +33,19 @@ Temple+ 환경에서 한국어를 표시하기 위한 실게임 검증 폰트/UI
 슬라이드 이미지는 별도 작업 흐름에서 순차적으로 업로드/QA 중입니다.
 
 ### `tools/`
-최종 번역 시트를 실제 TOEE / Co8 / Temple+ 원본 텍스트 파일에 안전하게 재주입하기 위한 도구입니다.
+최종 번역 시트를 실제 TOEE / Co8 / TemplePlus 원본 텍스트 파일에 안전하게 재주입하기 위한 도구입니다.
 
-- `toee_apply_korean_translation.py`: DLG / MES / TAB / JSON 번역 재주입
-- `TOEE_한글패치_생성.bat`: Windows 원클릭 패치 생성 래퍼
+현재는 **사용자가 각 설치 경로를 직접 지정하는 Windows GUI 통합 설치기**를 기본 방향으로 사용합니다.
+
+- `toee_korean_installer_gui.pyw`: TOEE / TemplePlus / XLSX 경로 직접 지정 GUI
+- `toee_apply_korean_translation.py`: DLG / MES / TAB / JSON 번역 재주입 코어
+- GitHub Actions: `TOEE_Korean_Installer.exe` 단일 실행 파일 자동 빌드
+- 전체 사전검사 통과 후에만 TOEE / Co8 + TemplePlus 동시 설치
+- 설치 전 날짜별 원본 백업 생성
+- 설치 도중 오류 발생 시 현재 작업 자동 롤백
 - 원본 파일 전체를 재구성하지 않고 번역 대상 필드만 교체
 - `⟦CTRL:NN⟧` 제어문자를 런타임 문자로 복원
 - 시트 English와 설치본 원문이 다르면 자동 보류
-- 기본 출력은 원본을 건드리지 않는 별도 스테이징 폴더
 
 자세한 내용은 [`tools/README.md`](tools/README.md)를 참고하세요.
 
@@ -66,6 +71,8 @@ Temple+ 환경에서 한국어를 표시하기 위한 실게임 검증 폰트/UI
 - [x] 전체 게임 텍스트 번역 완료
 - [x] 전체 텍스트 구조/의미 델타 QA 및 FINAL GATE
 - [x] DLG/MES/TAB/JSON 재주입 도구 작성 및 샘플 검증
+- [x] TOEE / Co8 + TemplePlus 경로 지정 GUI 통합 설치기 작성
+- [x] Windows 단일 EXE 자동 빌드 워크플로 구성
 - [ ] `[exit]`, `[Barter]` 등 대괄호 UI/행동문구 최종 정규화
 - [ ] 슬라이드 이미지 116장 업로드
 - [ ] 슬라이드 영문 잔상/글자 잘림 최종 QA

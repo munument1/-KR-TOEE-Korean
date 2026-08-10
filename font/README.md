@@ -1,6 +1,6 @@
 # Temple+ 한국어 폰트 적용 작업물
 
-이 폴더에는 Temple+ 환경에서 TOEE 한국어 텍스트를 표시하기 위한 폰트 설정이 들어 있습니다.
+이 폴더에는 Temple+ 환경에서 TOEE 한국어 텍스트를 표시하기 위한 폰트 설정과 배포 가능한 폰트 바이너리가 들어 있습니다.
 
 ## 현재 구성
 
@@ -62,9 +62,9 @@ main_menu_cinematics.json
 main_menu_setpieces.json
 ```
 
-## 필요한 폰트
+## 포함된 폰트
 
-현재 설정은 아래 폰트가 Temple+의 `tpdata/fonts/` 폴더에 존재한다는 전제로 작성되어 있습니다.
+`font/tpdata/fonts/`에 아래 네 TTF를 직접 포함합니다.
 
 ```text
 NanumBarunGothic.ttf
@@ -79,9 +79,7 @@ GraceSerif의 DirectWrite 패밀리 이름은 다음과 같습니다.
 우아한 세리프
 ```
 
-현재 이 저장소의 `font/tpdata/fonts/`에는 폰트 바이너리 자체가 포함되어 있지 않습니다.
-
-업로드할 원본 파일의 SHA-256 확인값:
+배포본과 설치기는 아래 SHA-256 기준으로 폰트 무결성을 확인합니다.
 
 ```text
 NanumBarunGothic.ttf      9b872773134e2e4d8c0b17021266786576db06c843ede0d0b523b214a450756c
@@ -92,7 +90,7 @@ GraceSerif-Bold.ttf       bbdc46f95144d4705c03b2b93da43464adc71ad8c3519702c7e0f0
 
 ## 폰트 라이선스
 
-폰트 바이너리를 번들할 때 필요한 라이선스 고지 파일을 같은 폴더에 포함합니다.
+폰트 바이너리와 함께 필요한 라이선스 고지 파일을 같은 폴더에 포함합니다.
 
 ```text
 LICENSE-NanumBarunGothic.txt
@@ -102,14 +100,18 @@ LICENSE-GraceSerif.txt
 - NanumBarunGothic: NAVER, SIL Open Font License 1.1
 - GraceSerif / 우아한세리프: Pear Type Foundry, SIL Open Font License 1.1
 
-두 폰트 모두 원본 글꼴 파일 자체를 별도로 유료 판매하는 것은 허용되지 않으며, 이 패치처럼 소프트웨어와 함께 번들·재배포할 때는 각 라이선스 고지를 유지해야 합니다.
+두 폰트 모두 원본 글꼴 파일 자체를 별도로 유료 판매하는 것은 허용되지 않으며, 이 패치처럼 소프트웨어와 함께 번들·재배포할 때는 각 라이선스 고지를 유지합니다.
+
+GraceSerif 바이너리는 Pear Type Foundry의 공식 무료 배포 ZIP을 사용하고, NanumBarunGothic은 공개 배포 원본과 대조하여 승인된 SHA-256과 일치하는 바이너리만 저장소와 설치기에 포함합니다.
 
 ## 적용 방법
+
+통합 설치기를 사용하면 폰트와 Temple+ 설정이 자동으로 적용됩니다. 수동 적용이 필요한 경우:
 
 1. Temple+를 완전히 종료합니다.
 2. 현재 사용하는 Temple+ 설치 폴더의 기존 설정을 백업합니다.
 3. 이 폴더의 `tpdata/` 내용을 Temple+의 `tpdata/`에 같은 상대 경로로 덮어씁니다.
-4. 필요한 폰트가 `tpdata/fonts/`에 존재하는지 확인합니다.
+4. 필요한 폰트 4개가 `tpdata/fonts/`에 존재하는지 확인합니다.
 5. Temple+를 다시 실행합니다.
 
 대표적인 Temple+ 설치 경로:
@@ -128,4 +130,4 @@ Temple+ 업데이트에 따라 `app-*` 버전 폴더명은 달라질 수 있습�
 
 ## 주의
 
-이 폴더는 한국어화 개발/WIP 설정입니다. Temple+ 업데이트 또는 사용자의 별도 폰트/UI 설정과 충돌할 수 있으므로 기존 파일을 백업해 두는 것을 권장합니다.
+이 폴더는 한국어화 개발/WIP 설정입니다. Temple+ 업데이트 또는 사용자의 별도 폰트/UI 설정과 충돌할 수 있으므로 통합 설치기는 기존 파일을 백업한 뒤 적용하도록 구성합니다.

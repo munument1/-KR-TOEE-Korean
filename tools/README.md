@@ -4,16 +4,21 @@
 
 ## 권장: GUI 통합 설치기
 
-`toee_korean_installer_gui.pyw`는 사용자가 경로를 직접 지정하는 Windows GUI입니다.
+`toee_korean_installer_gui.pyw`는 사용자가 설치 위치를 직접 지정하는 Windows GUI입니다.
+
+설치기는 특정 설치 경로를 강제로 사용하거나 자동 결정하지 않습니다. 각 입력칸의 `찾아보기` 버튼으로 본인의 실제 설치 위치를 선택하고, 입력칸 아래에 표시되는 예시 경로는 위치를 찾기 위한 참고용으로만 사용합니다.
 
 직접 지정 항목:
 
 - **TOEE 설치 폴더** — `data`, `modules/ToEE`가 들어 있는 게임 루트
-- **TemplePlus tpdata 폴더** — 예: `%LOCALAPPDATA%\TemplePlus\app-1.0.xx\tpdata`
+  - 예: `C:\GOG Games\Temple of Elemental Evil`
+- **TemplePlus tpdata 폴더** — 현재 사용하는 TemplePlus 버전의 실제 `tpdata`
+  - 예: `C:\Users\<사용자>\AppData\Local\TemplePlus\app-1.0.xx\tpdata`
 - **최종 번역 XLSX** — `TOEE_Translation_FILTERED_v2.xlsx`
 - **패치 출력 폴더** — 패치 파일만 생성할 때 사용
+  - 예: `C:\Users\<사용자>\Desktop\TOEE_Korean_Patch_Output`
 
-TemplePlus는 `자동 찾기` 버튼도 지원하지만 직접 경로 입력/찾아보기가 기본입니다.
+한 번 직접 지정한 경로는 `%APPDATA%\TOEE_Korean_Installer\settings.json`에 저장되어 다음 실행 때 다시 불러옵니다. 저장된 경로도 언제든 `찾아보기`로 변경할 수 있습니다.
 
 ### 실행 방식
 
@@ -28,15 +33,13 @@ TemplePlus는 `자동 찾기` 버튼도 지원하지만 직접 경로 입력/찾
 3. **패치 파일만 생성**
    - 원본은 수정하지 않고 별도 오버레이 폴더만 생성합니다.
 
-경로 설정은 `%APPDATA%\TOEE_Korean_Installer\settings.json`에 저장되어 다음 실행 때 다시 불러옵니다.
-
 ## Windows EXE
 
 GitHub Actions의 **Build Windows Installer** 워크플로가 아래 파일을 단일 실행 파일로 빌드합니다.
 
 `TOEE_Korean_Installer.exe`
 
-EXE에는 Python 실행 환경과 `openpyxl`, 재주입 코어가 함께 묶이므로 최종 사용자는 Python을 별도로 설치할 필요가 없습니다. 최종 번역 XLSX와 게임/TemplePlus 경로만 지정하면 됩니다.
+EXE에는 Python 실행 환경과 `openpyxl`, 재주입 코어, 검증된 한국어 폰트 리소스가 함께 묶이므로 최종 사용자는 Python이나 폰트를 별도로 설치할 필요가 없습니다. 최종 번역 XLSX와 본인의 게임/TemplePlus 설치 위치만 직접 지정하면 됩니다.
 
 ## 구성 파일
 

@@ -1,18 +1,23 @@
 # Temple+ 한국어 폰트 적용 작업물
 
-이 폴더에는 Temple+ 환경에서 TOEE 한국어 텍스트를 표시하기 위해 실제 게임에서 검증한 폰트 설정이 들어 있습니다.
+이 폴더에는 Temple+ 환경에서 TOEE 한국어 텍스트를 표시하기 위한 폰트 설정이 들어 있습니다.
 
-## 현재 검증된 구성
+## 현재 구성
 
-### 1. NPC 대화창 / 플레이어 선택지
+### 1. 레거시 UI / 대화 / 인터페이스 MES
 
-`tpdata/fonts/mapping.json`의 원본 **배열 구조를 그대로 유지**하면서 `priory-12` 항목의 `fontFace`만 변경했습니다.
+`tpdata/fonts/mapping.json`의 원본 배열 구조와 각 ID의 크기/굵기/줄높이 값을 유지하면서, Temple+가 사용하는 6개 레거시 폰트 ID를 한글 지원 폰트로 매핑했습니다.
 
 ```text
-Junicode -> NanumBarunGothic
+arial-10       -> NanumBarunGothic
+arial-12       -> NanumBarunGothic
+arial-bold-10  -> NanumBarunGothic
+arial-bold-24  -> NanumBarunGothic
+priory-12      -> NanumBarunGothic
+scurlock-48    -> 우아한 세리프
 ```
 
-`size`, `bold`, `italic`, `uniformLineHeight` 및 다른 폰트 항목은 기준 매핑 값을 유지합니다.
+`art/interface/**.mes` 파일에서 `priory-12`, `arial-10`, `arial-bold-24` 같은 기존 폰트 ID를 직접 참조하더라도, Temple+의 폰트 매핑을 통해 위 한글 폰트가 사용됩니다. 따라서 폰트 적용만을 위해 interface MES의 폰트 ID를 개별 수정할 필요는 없습니다.
 
 실게임 Hommlet의 Kent 대화에서 다음 항목을 확인했습니다.
 
@@ -22,11 +27,25 @@ Junicode -> NanumBarunGothic
 
 > `mapping.json`은 객체 하나가 아니라 `id` 항목들이 들어 있는 JSON 배열 형식이어야 합니다. 구조를 다른 형태로 바꾸면 Temple+ 시작/로드 과정에서 문제가 생길 수 있습니다.
 
-### 2. 메인 메뉴
+### 2. Temple+ 신형 공통 UI
 
-`tpdata/templeplus/ui/main_menu.json`에서 Temple+의 현대식 UI/DirectWrite 경로를 사용하도록 메인 메뉴 표시 폰트를 지정했습니다.
+`tpdata/templeplus/text_styles.json`을 추가하여 Temple+ 신형 UI의 공통 텍스트 스타일을 `NanumBarunGothic`으로 지정했습니다.
 
-현재 확정값:
+대상 스타일:
+
+```text
+default
+arial-10-title-text
+default-button-text
+chargen-button-text
+priory-title
+```
+
+`button_styles.json`은 위 text style ID를 참조하므로 폰트 적용을 위해 별도로 수정하지 않습니다.
+
+### 3. 메인 메뉴
+
+`tpdata/templeplus/ui/main_menu.json`은 Temple+의 현대식 UI/DirectWrite 경로에서 다음 값을 사용합니다.
 
 ```text
 fontFamily: 우아한 세리프
@@ -34,7 +53,14 @@ pointSize: 30
 버튼 세로 간격: 44px
 ```
 
-한국어 메인 메뉴 출력과 레이아웃이 실제 게임에서 정상 표시되는 것을 확인했습니다.
+한국어 메인 메뉴 출력과 레이아웃은 실제 게임에서 정상 표시되는 것을 확인했습니다.
+
+추가로 아래 메뉴 JSON의 직접 폰트 지정도 `NanumBarunGothic`으로 변경했습니다.
+
+```text
+main_menu_cinematics.json
+main_menu_setpieces.json
+```
 
 ## 필요한 폰트
 
@@ -53,7 +79,7 @@ GraceSerif의 DirectWrite 패밀리 이름은 다음과 같습니다.
 우아한 세리프
 ```
 
-이 저장소에는 현재 폰트 바이너리 자체를 포함하지 않습니다.
+현재 이 저장소의 `font/tpdata/fonts/`에는 폰트 바이너리 자체가 포함되어 있지 않습니다.
 
 ## 적용 방법
 
@@ -75,7 +101,7 @@ Temple+ 업데이트에 따라 `app-*` 버전 폴더명은 달라질 수 있습�
 
 현재까지의 실게임 테스트에서는 번역 리소스를 **UTF-8 무BOM**으로 저장한 구성이 정상 동작했습니다.
 
-메인 메뉴와 대화창은 렌더링 경로가 다르므로, 향후 다른 UI·로그·도움말·아이템 설명 등도 통합 번역 완료 후 별도 QA를 진행할 예정입니다.
+메인 메뉴와 대화창은 이미 실게임에서 확인했으며, 캐릭터 생성·인벤토리·아이템 설명·도움말·전투 로그 등은 통합 번역 반영 후 추가 QA가 필요합니다.
 
 ## 주의
 

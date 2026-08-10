@@ -1,0 +1,37 @@
+name: Probe Grace Serif Source
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/probe-font-source.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe official Pear Type site
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/pear
+          curl -L --fail --retry 2 -A 'Mozilla/5.0' 'https://www.peartype.kr/' -o /tmp/pear/index.html
+          echo '=== INDEX MATCHES ==='
+          grep -Eio '.{0,120}(GraceSerif|우아한|\.zip|\.ttf|download).{0,180}' /tmp/pear/index.html | head -n 200 || true
+          echo '=== SCRIPT URLS ==='
+          grep -Eo '<script[^>]+src=["'"'][^"'"']+' /tmp/pear/index.html | sed -E 's/.*src=["'"']//' | tee /tmp/pear/scripts.txt || true
+          while IFS= read -r src; do
+            [ -z "$src" ] && continue
+            case "$src" in
+              http*) url="$src" ;;
+              /*) url="https://www.peartype.kr$src" ;;
+              *) url="https://www.peartype.kr/$src" ;;
+            esac
+            name="/tmp/pear/$(echo "$src" | tr '/?&=' '_')"
+            curl -L --fail --retry 1 -A 'Mozilla/5.0' "$url" -o "$name" || continue
+            echo "=== MATCHES IN $url ==="
+            grep -Eio '.{0,160}(GraceSerif|우아한|\.zip|\.ttf|download).{0,220}' "$name" | head -n 200 || true
+          done < /tmp/pear/scripts.txt

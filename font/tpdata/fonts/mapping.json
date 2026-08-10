@@ -1,7 +1,7 @@
 [
   {
     "id": "arial-10",
-    "fontFace": "Arial",
+    "fontFace": "NanumBarunGothic",
     "size": 11,
     "bold": false,
     "italic": false,
@@ -12,7 +12,7 @@
   },
   {
     "id": "arial-12",
-    "fontFace": "Junicode",
+    "fontFace": "NanumBarunGothic",
     "size": 13,
     "bold": false,
     "italic": false,
@@ -23,7 +23,7 @@
   },
   {
     "id": "arial-bold-10",
-    "fontFace": "Arial",
+    "fontFace": "NanumBarunGothic",
     "size": 11,
     "bold": true,
     "italic": false,
@@ -34,7 +34,7 @@
   },
   {
     "id": "arial-bold-24",
-    "fontFace": "Arial",
+    "fontFace": "NanumBarunGothic",
     "size": 25,
     "bold": true,
     "italic": false,
@@ -56,7 +56,7 @@
   },
   {
     "id": "scurlock-48",
-    "fontFace": "Scurlock",
+    "fontFace": "우아한 세리프",
     "size": 49,
     "bold": false,
     "italic": false,

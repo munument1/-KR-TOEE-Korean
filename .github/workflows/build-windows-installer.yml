@@ -21,11 +21,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
+      # The four TTFs are vendored in font/tpdata/fonts and must match the
+      # approved user-provided binaries before they are embedded in the EXE.
       - name: Validate bundled fonts
         shell: pwsh
         run: |
@@ -45,6 +42,11 @@ jobs:
             }
             Write-Host "OK $($entry.Key) $actual"
           }
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Install build dependencies
         shell: pwsh

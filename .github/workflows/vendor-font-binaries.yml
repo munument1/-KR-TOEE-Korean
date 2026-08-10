@@ -1,0 +1,64 @@
+name: Vendor Korean Font Binaries
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/vendor-font-binaries.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  vendor-fonts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download exact font binaries
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p font/tpdata/fonts /tmp/grace
+
+          curl -L --fail --retry 3 \
+            'https://raw.githubusercontent.com/hiun/NanumBarunGothic/master/NanumBarunGothic.ttf' \
+            -o font/tpdata/fonts/NanumBarunGothic.ttf
+          curl -L --fail --retry 3 \
+            'https://raw.githubusercontent.com/hiun/NanumBarunGothic/master/NanumBarunGothicBold.ttf' \
+            -o font/tpdata/fonts/NanumBarunGothicBold.ttf
+
+          curl -L --fail --retry 3 -A 'Mozilla/5.0' \
+            'https://www.peartype.kr/PTF-GraceSerif.zip?v=2' \
+            -o /tmp/PTF-GraceSerif.zip
+          unzip -q /tmp/PTF-GraceSerif.zip -d /tmp/grace
+          cp /tmp/grace/TTF/GraceSerif-Regular.ttf font/tpdata/fonts/GraceSerif-Regular.ttf
+          cp /tmp/grace/TTF/GraceSerif-Bold.ttf font/tpdata/fonts/GraceSerif-Bold.ttf
+
+      - name: Verify SHA-256 against approved uploads
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo '9b872773134e2e4d8c0b17021266786576db06c843ede0d0b523b214a450756c  font/tpdata/fonts/NanumBarunGothic.ttf' > /tmp/fonts.sha256
+          echo '39bba4cd9bd2986143825c8654abbb62443914ab33b346c0c929a916f5d98bf2  font/tpdata/fonts/NanumBarunGothicBold.ttf' >> /tmp/fonts.sha256
+          echo '33eb8227c4ecd0cfa4e4ec18d9f448a9530dfc36bb8034bf3b409b572aba64d1  font/tpdata/fonts/GraceSerif-Regular.ttf' >> /tmp/fonts.sha256
+          echo 'bbdc46f95144d4705c03b2b93da43464adc71ad8c3519702c7e0f04ae8b75d25  font/tpdata/fonts/GraceSerif-Bold.ttf' >> /tmp/fonts.sha256
+          sha256sum -c /tmp/fonts.sha256
+
+      - name: Commit verified binaries
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add font/tpdata/fonts/NanumBarunGothic.ttf \
+                  font/tpdata/fonts/NanumBarunGothicBold.ttf \
+                  font/tpdata/fonts/GraceSerif-Regular.ttf \
+                  font/tpdata/fonts/GraceSerif-Bold.ttf
+          if git diff --cached --quiet; then
+            echo 'Font binaries already vendored.'
+            exit 0
+          fi
+          git commit -m 'Bundle verified Korean font binaries'
+          git push origin HEAD:main

@@ -18,6 +18,7 @@ Temple+ 환경에서 한국어를 표시하기 위한 실게임 검증 폰트/UI
 - 메인 메뉴 버튼 세로 간격: 44px
 - 현재 테스트 번역 리소스: UTF-8 무BOM
 - Temple+ DirectWrite 경로에서 한국어 출력 확인
+- NanumBarunGothic / GraceSerif TTF 4개 및 OFL 라이선스 번들
 
 자세한 적용 방법은 [`font/README.md`](font/README.md)를 참고하세요.
 
@@ -39,6 +40,7 @@ Temple+ 환경에서 한국어를 표시하기 위한 실게임 검증 폰트/UI
 
 - `toee_korean_installer_gui.pyw`: TOEE / TemplePlus / XLSX 경로 직접 지정 GUI
 - `toee_apply_korean_translation.py`: DLG / MES / TAB / JSON 번역 재주입 코어
+- `toee_font_bundle_hook.py`: 폰트 4개 SHA-256 검증 및 TemplePlus 폰트/UI 설정 통합
 - GitHub Actions: `TOEE_Korean_Installer.exe` 단일 실행 파일 자동 빌드
 - 전체 사전검사 통과 후에만 TOEE / Co8 + TemplePlus 동시 설치
 - 설치 전 날짜별 원본 백업 생성
@@ -46,6 +48,7 @@ Temple+ 환경에서 한국어를 표시하기 위한 실게임 검증 폰트/UI
 - 원본 파일 전체를 재구성하지 않고 번역 대상 필드만 교체
 - `⟦CTRL:NN⟧` 제어문자를 런타임 문자로 복원
 - 시트 English와 설치본 원문이 다르면 자동 보류
+- 번들된 TTF 4개의 SHA-256이 기준값과 다르면 설치기 빌드/설치를 중단
 
 자세한 내용은 [`tools/README.md`](tools/README.md)를 참고하세요.
 
@@ -67,6 +70,7 @@ Temple+ 환경에서 한국어를 표시하기 위한 실게임 검증 폰트/UI
 
 - [x] Temple+ 대화창 한글 폰트 매핑 교정 및 실게임 확인
 - [x] 메인 메뉴 한글 DirectWrite 출력 및 GraceSerif 레이아웃 확인
+- [x] 한글 TTF 4개 및 OFL 라이선스 저장소 탑재
 - [x] UTF-8 무BOM DLG 한국어 대화 출력 확인
 - [x] 전체 게임 텍스트 번역 완료
 - [x] 전체 텍스트 구조/의미 델타 QA 및 FINAL GATE
@@ -82,7 +86,14 @@ Temple+ 환경에서 한국어를 표시하기 위한 실게임 검증 폰트/UI
 
 ## 폰트 파일
 
-현재 저장소에는 폰트 바이너리 자체를 포함하지 않습니다. `font/README.md`에 적힌 폰트를 사용자가 별도로 준비해 Temple+의 `tpdata/fonts/`에 배치하는 방식으로 작업 중입니다.
+저장소의 `font/tpdata/fonts/`에 아래 TTF 4개와 각 OFL 라이선스를 포함합니다.
+
+- `NanumBarunGothic.ttf`
+- `NanumBarunGothicBold.ttf`
+- `GraceSerif-Regular.ttf`
+- `GraceSerif-Bold.ttf`
+
+GitHub Actions와 통합 설치기는 `font/README.md`에 기록된 SHA-256 기준값으로 파일 무결성을 검증합니다.
 
 ## 주의
 

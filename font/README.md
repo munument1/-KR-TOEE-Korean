@@ -81,6 +81,29 @@ GraceSerif의 DirectWrite 패밀리 이름은 다음과 같습니다.
 
 현재 이 저장소의 `font/tpdata/fonts/`에는 폰트 바이너리 자체가 포함되어 있지 않습니다.
 
+업로드할 원본 파일의 SHA-256 확인값:
+
+```text
+NanumBarunGothic.ttf      9b872773134e2e4d8c0b17021266786576db06c843ede0d0b523b214a450756c
+NanumBarunGothicBold.ttf  39bba4cd9bd2986143825c8654abbb62443914ab33b346c0c929a916f5d98bf2
+GraceSerif-Regular.ttf    33eb8227c4ecd0cfa4e4ec18d9f448a9530dfc36bb8034bf3b409b572aba64d1
+GraceSerif-Bold.ttf       bbdc46f95144d4705c03b2b93da43464adc71ad8c3519702c7e0f04ae8b75d25
+```
+
+## 폰트 라이선스
+
+폰트 바이너리를 번들할 때 필요한 라이선스 고지 파일을 같은 폴더에 포함합니다.
+
+```text
+LICENSE-NanumBarunGothic.txt
+LICENSE-GraceSerif.txt
+```
+
+- NanumBarunGothic: NAVER, SIL Open Font License 1.1
+- GraceSerif / 우아한세리프: Pear Type Foundry, SIL Open Font License 1.1
+
+두 폰트 모두 원본 글꼴 파일 자체를 별도로 유료 판매하는 것은 허용되지 않으며, 이 패치처럼 소프트웨어와 함께 번들·재배포할 때는 각 라이선스 고지를 유지해야 합니다.
+
 ## 적용 방법
 
 1. Temple+를 완전히 종료합니다.

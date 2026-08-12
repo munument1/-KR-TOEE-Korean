@@ -80,7 +80,7 @@ jobs:
           if expr not in text:
               raise SystemExit("verification expression not found")
           text = text.replace(expr, 'read_source_text(root / rel)[0]', 1)
-          p.write_text(text, encoding="utf-8", newline="\n")
+          p.write_text(text, encoding="utf-8")
           '@ | python -
 
       - name: Apply exact historical five-file CP949 patch

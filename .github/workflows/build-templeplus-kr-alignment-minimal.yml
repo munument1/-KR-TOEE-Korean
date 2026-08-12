@@ -39,20 +39,62 @@ jobs:
       - name: Recover and apply proven stable CP949 source patch
         shell: powershell
         run: |
-          # Freeze the known working stable CP949 patcher from repository history.
-          git show bf77e9530060621e3b3c2bfa38105ff759b86de1:tools/apply_templeplus_cp949_patch.py | Out-File -Encoding utf8 stable_cp949_patcher.py
+          # Recover the known stable CP949 transformation from repository history.
+          cmd.exe /c "git show bf77e9530060621e3b3c2bfa38105ff759b86de1:tools/apply_templeplus_cp949_patch.py > stable_cp949_patcher.py"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          # The upstream v1.0.98 tree contains a legacy non-UTF8 byte in a source
+          # comment. Make only the patcher's file I/O byte-preserving; do not
+          # change any of the stable CP949 transformation logic.
+          @'
+          from pathlib import Path
+          p = Path('stable_cp949_patcher.py')
+          text = p.read_text(encoding='utf-8-sig')
+          old1 = '    text = path.read_text(encoding="utf-8-sig")'
+          new1 = '''    raw = path.read_bytes()
+              had_bom = raw.startswith(b"\\xef\\xbb\\xbf")
+              if had_bom:
+                  raw = raw[3:]
+              text = raw.decode("utf-8", errors="surrogateescape")'''
+          old2 = '    path.write_text(new_text, encoding="utf-8", newline="\\n")'
+          new2 = '''    out = new_text.encode("utf-8", errors="surrogateescape")
+              if had_bom:
+                  out = b"\\xef\\xbb\\xbf" + out
+              path.write_bytes(out)'''
+          if text.count(old1) != 1 or text.count(old2) != 1:
+              raise SystemExit('stable patcher I/O guard failed')
+          text = text.replace(old1, new1).replace(old2, new2)
+          p.write_text(text, encoding='utf-8', newline='\n')
+          print('STABLE_PATCHER_IO_BYTESAFE')
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
           python stable_cp949_patcher.py TemplePlus-src
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           Push-Location TemplePlus-src
           git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git diff -- Infrastructure/include/infrastructure/stringutil.h Infrastructure/stringutil.cpp TemplePlus/gamesystems/gamesystems.cpp TemplePlus/fonts/fonts_layout.cpp TemplePlus/ui/widgets/widget_content.cpp | Out-File -Encoding utf8 ../STABLE_CP949_SOURCE_DIFF.patch
           Pop-Location
 
-      - name: Snapshot stable source before alignment hook
+      - name: Snapshot stable tracked source before alignment hook
         shell: powershell
         run: |
-          python -c "from pathlib import Path; import hashlib,json; r=Path('TemplePlus-src'); d={str(p.relative_to(r)).replace('\\','/'):hashlib.sha256(p.read_bytes()).hexdigest() for p in r.rglob('*') if p.is_file() and '.git' not in p.parts}; Path('stable_source_manifest.json').write_text(json.dumps(d,sort_keys=True,indent=2),encoding='utf-8')"
+          @'
+          from pathlib import Path
+          import hashlib, json, subprocess
+          root = Path('TemplePlus-src')
+          tracked = subprocess.check_output(['git', '-C', str(root), 'ls-files'], text=True).splitlines()
+          manifest = {}
+          for rel in tracked:
+              p = root / rel
+              if p.is_file():
+                  manifest[rel.replace('\\', '/')] = hashlib.sha256(p.read_bytes()).hexdigest()
+          Path('stable_source_manifest.json').write_text(json.dumps(manifest, sort_keys=True, indent=2), encoding='utf-8')
+          print('TRACKED_FILES', len(manifest))
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Copy-Item TemplePlus-src/TemplePlus/gamesystems/d20/d20stats.cpp d20stats_STABLE.cpp
 
       - name: Download and extract TemplePlus dependencies
@@ -96,19 +138,22 @@ jobs:
           python tools/templeplus_minimal_alignment/apply_alignment_name_hook.py TemplePlus-src
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Verify source scope is exactly one file
+      - name: Verify source scope is exactly one tracked file
         shell: powershell
         run: |
-          python - <<'PY'
+          @'
           from pathlib import Path
-          import hashlib, json, difflib
+          import hashlib, json, difflib, subprocess
 
           root = Path('TemplePlus-src')
           before = json.loads(Path('stable_source_manifest.json').read_text(encoding='utf-8'))
-          after = {
-              str(p.relative_to(root)).replace('\\', '/'): hashlib.sha256(p.read_bytes()).hexdigest()
-              for p in root.rglob('*') if p.is_file() and '.git' not in p.parts
-          }
+          tracked = subprocess.check_output(['git', '-C', str(root), 'ls-files'], text=True).splitlines()
+          after = {}
+          for rel in tracked:
+              p = root / rel
+              if p.is_file():
+                  after[rel.replace('\\', '/')] = hashlib.sha256(p.read_bytes()).hexdigest()
+
           changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
           expected = ['TemplePlus/gamesystems/d20/d20stats.cpp']
           print('CHANGED_AFTER_STABLE_BASELINE=', changed)
@@ -133,7 +178,8 @@ jobs:
               'Hook: 0x10073C20 only\nNo 0x1001FA80 hook\nNo pointer-table synchronization\nNo global encoding changes\n',
               encoding='utf-8'
           )
-          PY
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Clean and build minimal alignment executable
         shell: powershell
@@ -145,6 +191,7 @@ jobs:
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           $vcvars = Join-Path $vsPath "VC\Auxiliary\Build\vcvars32.bat"
+          if (-not (Test-Path $vcvars)) { throw "vcvars32.bat not found: $vcvars" }
           cmd.exe /c "`"$vcvars`" && msbuild TemplePlus.sln /t:Clean /p:Configuration=Release /p:Platform=Win32 /verbosity:minimal && msbuild TemplePlus.sln /p:Configuration=Release /p:Platform=Win32 /p:MSBuildDefines=`"_TP_VERSION=$env:TEMPLEPLUS_VERSION;_TP_COMMIT=$env:COMMIT_ID;TP_RELEASE_BUILD`" /verbosity:minimal"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Copy-Item Release/TemplePlus.exe ../artifact/TemplePlus.exe
@@ -152,7 +199,7 @@ jobs:
       - name: Compare control and minimal binaries
         shell: powershell
         run: |
-          python - <<'PY'
+          @'
           from pathlib import Path
           import hashlib
 
@@ -172,7 +219,8 @@ jobs:
           ]
           Path('artifact/BINARY_COMPARE.txt').write_text('\n'.join(report) + '\n', encoding='utf-8')
           print('\n'.join(report))
-          PY
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Package test artifact
         shell: powershell
@@ -182,7 +230,8 @@ jobs:
 
           Base:
           - official TemplePlus v1.0.98
-          - exact proven stable CP949 patcher recovered from commit bf77e9530060621e3b3c2bfa38105ff759b86de1
+          - proven stable CP949 transformation recovered from commit bf77e9530060621e3b3c2bfa38105ff759b86de1
+          - patcher I/O only made byte-preserving for the upstream legacy source encoding
 
           Only new runtime change:
           - hook 0x10073C20
@@ -195,7 +244,7 @@ jobs:
           - 0x10073B40 alignment short description
           - 0x10AAE89C alignment pointer table
           - 0x10AAE410 gender pointer table
-          - stringutil / global UTF-8-CP949 behavior
+          - stringutil / global UTF-8-CP949 behavior beyond the stable CP949 baseline
           - fonts_layout / widget_content beyond the stable CP949 baseline
 
           Test first:

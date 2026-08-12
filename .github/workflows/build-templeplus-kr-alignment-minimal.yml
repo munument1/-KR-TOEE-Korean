@@ -1,0 +1,215 @@
+name: Build TemplePlus KR Alignment Minimal Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - templeplus-kr-alignment-minimal
+    paths:
+      - '.github/workflows/build-templeplus-kr-alignment-minimal.yml'
+      - 'tools/templeplus_minimal_alignment/**'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Stable CP949 plus 0x10073C20 only
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout Korean patch repository with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up NuGet
+        uses: nuget/setup-nuget@v2
+
+      - name: Clone official TemplePlus v1.0.98
+        shell: powershell
+        run: |
+          git clone --depth 1 --branch v1.0.98 https://github.com/GrognardsFromHell/TemplePlus.git TemplePlus-src
+
+      - name: Recover and apply proven stable CP949 source patch
+        shell: powershell
+        run: |
+          # Freeze the known working stable CP949 patcher from repository history.
+          git show bf77e9530060621e3b3c2bfa38105ff759b86de1:tools/apply_templeplus_cp949_patch.py | Out-File -Encoding utf8 stable_cp949_patcher.py
+          python stable_cp949_patcher.py TemplePlus-src
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          Push-Location TemplePlus-src
+          git diff --check
+          git diff -- Infrastructure/include/infrastructure/stringutil.h Infrastructure/stringutil.cpp TemplePlus/gamesystems/gamesystems.cpp TemplePlus/fonts/fonts_layout.cpp TemplePlus/ui/widgets/widget_content.cpp | Out-File -Encoding utf8 ../STABLE_CP949_SOURCE_DIFF.patch
+          Pop-Location
+
+      - name: Snapshot stable source before alignment hook
+        shell: powershell
+        run: |
+          python -c "from pathlib import Path; import hashlib,json; r=Path('TemplePlus-src'); d={str(p.relative_to(r)).replace('\\','/'):hashlib.sha256(p.read_bytes()).hexdigest() for p in r.rglob('*') if p.is_file() and '.git' not in p.parts}; Path('stable_source_manifest.json').write_text(json.dumps(d,sort_keys=True,indent=2),encoding='utf-8')"
+          Copy-Item TemplePlus-src/TemplePlus/gamesystems/d20/d20stats.cpp d20stats_STABLE.cpp
+
+      - name: Download and extract TemplePlus dependencies
+        shell: powershell
+        working-directory: TemplePlus-src
+        run: |
+          curl.exe -L -o dependencies.7z https://github.com/GrognardsFromHell/Dependencies/releases/download/v1.19/dependencies.7z
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          7z x dependencies.7z
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Restore NuGet packages
+        shell: powershell
+        working-directory: TemplePlus-src
+        run: |
+          nuget install Squirrel.Windows -OutputDirectory Squirrel -Verbosity Detailed
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          nuget restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build stable CP949 control executable
+        shell: powershell
+        working-directory: TemplePlus-src
+        env:
+          TEMPLEPLUS_VERSION: 1.0.98-KR-MIN
+          COMMIT_ID: KRALIGNMIN
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsPath) { throw "Visual Studio with x86 C++ tools not found" }
+          $vcvars = Join-Path $vsPath "VC\Auxiliary\Build\vcvars32.bat"
+          if (-not (Test-Path $vcvars)) { throw "vcvars32.bat not found: $vcvars" }
+          cmd.exe /c "`"$vcvars`" && msbuild TemplePlus.sln /p:Configuration=Release /p:Platform=Win32 /p:MSBuildDefines=`"_TP_VERSION=$env:TEMPLEPLUS_VERSION;_TP_COMMIT=$env:COMMIT_ID;TP_RELEASE_BUILD`" /verbosity:minimal"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force -Path ../artifact | Out-Null
+          Copy-Item Release/TemplePlus.exe ../artifact/TemplePlus_STABLE_CONTROL.exe
+
+      - name: Apply only the party alignment name hook
+        shell: powershell
+        run: |
+          python tools/templeplus_minimal_alignment/apply_alignment_name_hook.py TemplePlus-src
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify source scope is exactly one file
+        shell: powershell
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json, difflib
+
+          root = Path('TemplePlus-src')
+          before = json.loads(Path('stable_source_manifest.json').read_text(encoding='utf-8'))
+          after = {
+              str(p.relative_to(root)).replace('\\', '/'): hashlib.sha256(p.read_bytes()).hexdigest()
+              for p in root.rglob('*') if p.is_file() and '.git' not in p.parts
+          }
+          changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+          expected = ['TemplePlus/gamesystems/d20/d20stats.cpp']
+          print('CHANGED_AFTER_STABLE_BASELINE=', changed)
+          if changed != expected:
+              raise SystemExit(f'SCOPE_GUARD_FAILED expected {expected}, got {changed}')
+
+          old = Path('d20stats_STABLE.cpp').read_text(encoding='utf-8').splitlines(True)
+          new = (root / expected[0]).read_text(encoding='utf-8').splitlines(True)
+          diff = ''.join(difflib.unified_diff(old, new, fromfile='stable/d20stats.cpp', tofile='minimal/d20stats.cpp'))
+          Path('artifact/ALIGNMENT_ONLY_SOURCE_DIFF.patch').write_text(diff, encoding='utf-8')
+
+          forbidden = ['0x1001FA80', '0x10AAE89C)[alignment] =', '0x10AAE410)[genderId] =', 'CP_UTF8']
+          added = ''.join(line for line in diff.splitlines(True) if line.startswith('+') and not line.startswith('+++'))
+          for token in forbidden:
+              if token in added:
+                  raise SystemExit(f'FORBIDDEN_ADDITION: {token}')
+          if '0x10073C20' not in added or 'MesLine line(6000 +' not in added:
+              raise SystemExit('EXPECTED_ALIGNMENT_HOOK_NOT_FOUND')
+
+          Path('artifact/SOURCE_SCOPE.txt').write_text(
+              'PASS\nChanged after stable baseline: TemplePlus/gamesystems/d20/d20stats.cpp only\n'
+              'Hook: 0x10073C20 only\nNo 0x1001FA80 hook\nNo pointer-table synchronization\nNo global encoding changes\n',
+              encoding='utf-8'
+          )
+          PY
+
+      - name: Clean and build minimal alignment executable
+        shell: powershell
+        working-directory: TemplePlus-src
+        env:
+          TEMPLEPLUS_VERSION: 1.0.98-KR-MIN
+          COMMIT_ID: KRALIGNMIN
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vcvars = Join-Path $vsPath "VC\Auxiliary\Build\vcvars32.bat"
+          cmd.exe /c "`"$vcvars`" && msbuild TemplePlus.sln /t:Clean /p:Configuration=Release /p:Platform=Win32 /verbosity:minimal && msbuild TemplePlus.sln /p:Configuration=Release /p:Platform=Win32 /p:MSBuildDefines=`"_TP_VERSION=$env:TEMPLEPLUS_VERSION;_TP_COMMIT=$env:COMMIT_ID;TP_RELEASE_BUILD`" /verbosity:minimal"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item Release/TemplePlus.exe ../artifact/TemplePlus.exe
+
+      - name: Compare control and minimal binaries
+        shell: powershell
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          a = Path('artifact/TemplePlus_STABLE_CONTROL.exe').read_bytes()
+          b = Path('artifact/TemplePlus.exe').read_bytes()
+          n = min(len(a), len(b))
+          diffs = [i for i in range(n) if a[i] != b[i]]
+          report = [
+              f'stable_control_size={len(a)}',
+              f'minimal_test_size={len(b)}',
+              f'stable_control_sha256={hashlib.sha256(a).hexdigest()}',
+              f'minimal_test_sha256={hashlib.sha256(b).hexdigest()}',
+              f'differing_offsets_in_common_range={len(diffs)}',
+              f'first_diff={hex(diffs[0]) if diffs else "none"}',
+              f'last_diff={hex(diffs[-1]) if diffs else "none"}',
+              f'size_delta={len(b)-len(a)}',
+          ]
+          Path('artifact/BINARY_COMPARE.txt').write_text('\n'.join(report) + '\n', encoding='utf-8')
+          print('\n'.join(report))
+          PY
+
+      - name: Package test artifact
+        shell: powershell
+        run: |
+          @"
+          TemplePlus 1.0.98 Korean minimal party-alignment test
+
+          Base:
+          - official TemplePlus v1.0.98
+          - exact proven stable CP949 patcher recovered from commit bf77e9530060621e3b3c2bfa38105ff759b86de1
+
+          Only new runtime change:
+          - hook 0x10073C20
+          - read stat.mes entry 6000 + alignment
+          - return existing CP949 bytes unchanged
+
+          Explicitly NOT changed:
+          - 0x1001FA80 display name
+          - 0x10073A30 gender name
+          - 0x10073B40 alignment short description
+          - 0x10AAE89C alignment pointer table
+          - 0x10AAE410 gender pointer table
+          - stringutil / global UTF-8-CP949 behavior
+          - fonts_layout / widget_content beyond the stable CP949 baseline
+
+          Test first:
+          1. Existing NPC/object display names still render Korean.
+          2. Existing dialogue/UI/barks remain Korean.
+          3. New Game -> 9 party alignment buttons render Korean.
+
+          Do not treat this as a release until all three pass.
+          "@ | Set-Content -Encoding UTF8 artifact/README_TEST.txt
+          Compress-Archive -Path artifact/* -DestinationPath TemplePlus_1.0.98_KR_Alignment_Minimal_TEST.zip -Force
+
+      - name: Upload minimal alignment test
+        uses: actions/upload-artifact@v4
+        with:
+          name: TemplePlus-KR-Alignment-Minimal-Test
+          path: TemplePlus_1.0.98_KR_Alignment_Minimal_TEST.zip
+          if-no-files-found: error

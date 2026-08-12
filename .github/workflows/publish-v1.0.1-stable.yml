@@ -1,0 +1,157 @@
+name: Publish TOEE Korean v1.0.1 Stable
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/publish-v1.0.1-stable.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download user-verified build artifact
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 31608369041 `
+            --repo munument1/-KR-TOEE-Korean `
+            --name TOEE_Korean_MINIMAL_CP949_EXE_TEST_WIN2022 `
+            --dir verified
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify executable and prepare final copy-paste ZIP
+        shell: powershell
+        run: |
+          $expectedExe = '27325C5E4E4C4519045B98226EFE133E82703E5B0E7C5A651A58CC1B1CBE686E'
+          $exe = 'verified/TemplePlus.exe'
+          $testZip = 'verified/TOEE_Korean_Patch_MINIMAL_CP949_EXE_TEST_20260812.zip'
+
+          if (-not (Test-Path $exe)) { throw 'Verified TemplePlus.exe missing' }
+          if (-not (Test-Path $testZip)) { throw 'Verified test ZIP missing' }
+
+          $exeHash = (Get-FileHash $exe -Algorithm SHA256).Hash
+          if ($exeHash -ne $expectedExe) {
+            throw "Executable hash mismatch: $exeHash"
+          }
+
+          Expand-Archive -LiteralPath $testZip -DestinationPath package -Force
+
+          $innerExe = 'package/TEMPLEPLUS_FOLDER/TemplePlus.exe'
+          if (-not (Test-Path $innerExe)) { throw 'TemplePlus.exe missing inside package' }
+          $innerHash = (Get-FileHash $innerExe -Algorithm SHA256).Hash
+          if ($innerHash -ne $expectedExe) {
+            throw "Inner executable hash mismatch: $innerHash"
+          }
+
+          Remove-Item 'package/README_MINIMAL_CP949_COMBAT_TEST.txt' -Force -ErrorAction SilentlyContinue
+
+          @'
+          TOEE 한국어 통합 패치 v1.0.1 - 안정판
+
+          TemplePlus 1.0.98 기준 복사/붙여넣기 배포판입니다.
+
+          이번 버전의 핵심 변경:
+          - 기존 KRUTF8 실험 TemplePlus.exe 폐기
+          - 공식 TemplePlus v1.0.98 기반으로 재빌드
+          - 한글 렌더링에 필요한 CP949 최소 수정 5개 소스만 적용
+          - AI / 전투 / action sequence / rules / TAB parser 소스는 수정하지 않음
+          - 기존 번역, 폰트, UI, tpdata, 이미지 리소스는 유지
+          - 레거시 ToEE DLG/MES는 CP949 경로 유지
+          - TemplePlus JSON/UI 등 UTF-8 리소스는 기존 UTF-8 그대로 유지
+
+          실게임 회귀 확인:
+          - 일반 물리 공격 명중/빗나감 정상
+          - 전투 로그/롤 히스토리 정상
+          - 주문 공격 정상
+
+          설치:
+          1. 게임과 TemplePlus를 종료합니다.
+          2. ZIP을 압축 해제합니다.
+          3. GAME_FOLDER 안의 내용물을 Temple of Elemental Evil 게임 폴더에 복사합니다.
+          4. TEMPLEPLUS_FOLDER 안의 내용물을 TemplePlus app-1.0.98 폴더에 복사합니다.
+          5. 같은 이름의 파일은 모두 덮어씁니다.
+
+          TemplePlus.exe SHA-256:
+          27325C5E4E4C4519045B98226EFE133E82703E5B0E7C5A651A58CC1B1CBE686E
+
+          비공식 팬 한국어화 패치입니다.
+          '@ | Set-Content 'package/README_STABLE_v1.0.1.txt' -Encoding UTF8
+
+          $out = 'TOEE_Korean_Patch_v1.0.1_STABLE_CP949_20260813.zip'
+          Compress-Archive -Path package/* -DestinationPath $out -CompressionLevel Optimal
+
+          $zipHash = (Get-FileHash $out -Algorithm SHA256).Hash
+          Write-Host "TemplePlus.exe SHA-256: $exeHash"
+          Write-Host "ZIP SHA-256: $zipHash"
+          "EXE_SHA=$exeHash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "ZIP_SHA=$zipHash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_ASSET=$out" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Create stable v1.0.1 release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          @"
+          ## TOEE 한국어 통합 패치 v1.0.1 안정판
+
+          v1.0.0 이후 발견된 **일반 물리 공격 판정/전투 로그 회귀 문제**를 수정한 안정화 릴리즈입니다.
+
+          ### 핵심 수정
+          - 문제를 일으킨 `KRUTF8` 실험 TemplePlus.exe 폐기
+          - 공식 TemplePlus **v1.0.98** 기반 재빌드
+          - 한글 표시를 위한 **CP949 최소 5파일 패치**만 적용
+          - AI, 전투, action sequence, rules, TAB parser 소스는 원본 유지
+          - 기존 한글 번역/폰트/UI/슬라이드/TemplePlus UTF-8 리소스 유지
+
+          ### 실게임 확인
+          - 일반 물리 공격 명중/빗나감 정상
+          - 전투 로그/롤 히스토리 정상
+          - 주문 공격 정상
+
+          ### 설치
+          1. 게임과 TemplePlus를 종료합니다.
+          2. ZIP을 압축 해제합니다.
+          3. `GAME_FOLDER` 내용을 TOEE 게임 폴더에 복사합니다.
+          4. `TEMPLEPLUS_FOLDER` 내용을 TemplePlus `app-1.0.98` 폴더에 복사합니다.
+          5. 같은 이름의 파일은 모두 덮어씁니다.
+
+          ### 무결성
+          - TemplePlus.exe SHA-256: `$env:EXE_SHA`
+          - ZIP SHA-256: `$env:ZIP_SHA`
+
+          **v1.0.0 사용자는 v1.0.1로 교체를 권장합니다.**
+          "@ | Set-Content release_notes.md -Encoding UTF8
+
+          if (gh release view v1.0.1 --repo munument1/-KR-TOEE-Korean *> $null) {
+            gh release upload v1.0.1 $env:RELEASE_ASSET --repo munument1/-KR-TOEE-Korean --clobber
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            gh release edit v1.0.1 --repo munument1/-KR-TOEE-Korean --title 'TOEE 한국어 통합 패치 v1.0.1 안정판' --notes-file release_notes.md --latest
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else {
+            gh release create v1.0.1 $env:RELEASE_ASSET `
+              --repo munument1/-KR-TOEE-Korean `
+              --target $env:GITHUB_SHA `
+              --title 'TOEE 한국어 통합 패치 v1.0.1 안정판' `
+              --notes-file release_notes.md `
+              --latest
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Upload final package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TOEE_Korean_Patch_v1.0.1_STABLE_CP949
+          path: TOEE_Korean_Patch_v1.0.1_STABLE_CP949_20260813.zip
+          if-no-files-found: error

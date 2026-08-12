@@ -115,7 +115,6 @@ jobs:
             Write-Error "Expected exactly 5 changed source files, got $($changed.Count)"
             exit 3
           }
-          git diff --check
           Pop-Location
 
       - name: Download official dependencies

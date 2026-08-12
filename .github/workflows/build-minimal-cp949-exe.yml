@@ -43,6 +43,43 @@ jobs:
       - name: Set up NuGet
         uses: nuget/setup-nuget@v2
 
+      - name: Preserve upstream source encoding in historical patch helper
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          p = Path("legacy_patch/tools/apply_templeplus_cp949_patch.py")
+          text = p.read_text(encoding="utf-8")
+          old = '''def patch_file(path: Path, transform):
+              text = path.read_text(encoding="utf-8-sig")
+              new_text = transform(text)
+              if new_text == text:
+                  raise RuntimeError(f"No changes made to {path}")
+              path.write_text(new_text, encoding="utf-8", newline="\\n")
+              print(f"patched {path}")
+          '''
+          new = '''def patch_file(path: Path, transform):
+              raw = path.read_bytes()
+              source_encoding = "utf-8"
+              try:
+                  text = raw.decode("utf-8-sig")
+              except UnicodeDecodeError:
+                  source_encoding = "cp1252"
+                  text = raw.decode(source_encoding)
+              text = text.replace("\\r\\n", "\\n").replace("\\r", "\\n")
+              new_text = transform(text)
+              if new_text == text:
+                  raise RuntimeError(f"No changes made to {path}")
+              path.write_bytes(new_text.encode(source_encoding))
+              print(f"patched {path} [{source_encoding}]")
+          '''
+          if old not in text:
+              raise SystemExit("historical patch_file function not found")
+          p.write_text(text.replace(old, new, 1), encoding="utf-8", newline="\n")
+          print("PATCH_HELPER_ENCODING_OK")
+          '@ | python -
+
       - name: Apply historical minimal CP949 patch
         shell: pwsh
         run: |

@@ -51,7 +51,8 @@ jobs:
 
           p = Path("legacy_patch/tools/apply_templeplus_cp949_patch.py")
           text = p.read_text(encoding="utf-8")
-          old = '''def patch_file(path: Path, transform):
+
+          old_patch_file = '''def patch_file(path: Path, transform):
               text = path.read_text(encoding="utf-8-sig")
               new_text = transform(text)
               if new_text == text:
@@ -59,7 +60,7 @@ jobs:
               path.write_text(new_text, encoding="utf-8", newline="\\n")
               print(f"patched {path}")
           '''
-          new = '''def patch_file(path: Path, transform):
+          new_patch_file = '''def patch_file(path: Path, transform):
               raw = path.read_bytes()
               source_encoding = "utf-8"
               try:
@@ -74,9 +75,28 @@ jobs:
               path.write_bytes(new_text.encode(source_encoding))
               print(f"patched {path} [{source_encoding}]")
           '''
-          if old not in text:
+          if old_patch_file not in text:
               raise SystemExit("historical patch_file function not found")
-          p.write_text(text.replace(old, new, 1), encoding="utf-8", newline="\n")
+          text = text.replace(old_patch_file, new_patch_file, 1)
+
+          old_verify = '''    for rel, needle in checks.items():
+              if needle not in (root / rel).read_text(encoding="utf-8"):
+                  raise RuntimeError(f"verification failed: {rel} missing {needle}")
+          '''
+          new_verify = '''    for rel, needle in checks.items():
+              raw = (root / rel).read_bytes()
+              try:
+                  check_text = raw.decode("utf-8-sig")
+              except UnicodeDecodeError:
+                  check_text = raw.decode("cp1252")
+              if needle not in check_text:
+                  raise RuntimeError(f"verification failed: {rel} missing {needle}")
+          '''
+          if old_verify not in text:
+              raise SystemExit("historical verification loop not found")
+          text = text.replace(old_verify, new_verify, 1)
+
+          p.write_text(text, encoding="utf-8", newline="\n")
           print("PATCH_HELPER_ENCODING_OK")
           '@ | python -
 

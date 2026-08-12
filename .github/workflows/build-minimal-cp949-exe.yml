@@ -42,7 +42,7 @@ jobs:
           git -C krpatch show f97ee0d8d21f7ff71a7e6458a2864b0ec30ac62d:tools/templeplus-1.0.98-korean-cp949.patch | Set-Content -Path minimal-cp949-reference.patch -Encoding utf8NoBOM
           if ($LASTEXITCODE -ne 0) { throw "Unable to restore reference diff" }
 
-      - name: Make historical patcher preserve source encoding
+      - name: Make historical patcher preserve encoding and normalize newlines
         shell: pwsh
         run: |
           @'
@@ -70,6 +70,7 @@ jobs:
                       pass
               if text is None or used_encoding is None:
                   raise RuntimeError(f"Unable to decode source file: {path}")
+              text = text.replace("\\r\\n", "\\n").replace("\\r", "\\n")
               new_text = transform(text)
               if new_text == text:
                   raise RuntimeError(f"No changes made to {path}")
@@ -80,7 +81,7 @@ jobs:
           if old not in s:
               raise SystemExit('patch_file block not found in historical patcher')
           p.write_text(s.replace(old, new, 1), encoding='utf-8', newline='\n')
-          print('PATCHER_ENCODING_FIX_OK')
+          print('PATCHER_ENCODING_NEWLINE_FIX_OK')
           '@ | Set-Content -Path fix_patcher.py -Encoding utf8NoBOM
           python fix_patcher.py
 

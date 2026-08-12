@@ -1,0 +1,122 @@
+name: Build Minimal CP949 TemplePlus EXE
+
+on:
+  push:
+    branches:
+      - agent/copy-paste-safe
+    paths:
+      - ".github/workflows/build-minimal-cp949-exe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout Korean patch history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: krpatch
+
+      - name: Checkout official TemplePlus 1.0.98
+        uses: actions/checkout@v4
+        with:
+          repository: GrognardsFromHell/TemplePlus
+          ref: v1.0.98
+          path: templeplus
+
+      - name: Restore original CP949-only patch from history
+        shell: pwsh
+        run: |
+          git -C krpatch show f97ee0d8d21f7ff71a7e6458a2864b0ec30ac62d:tools/templeplus-1.0.98-korean-cp949.patch | Set-Content -Path minimal-cp949.patch -Encoding utf8NoBOM
+          if ($LASTEXITCODE -ne 0) { throw "Unable to restore historical CP949 patch" }
+          Get-Content minimal-cp949.patch -TotalCount 30
+
+      - name: Apply only the historical rendering patch
+        shell: pwsh
+        run: |
+          git -C templeplus apply --check ../minimal-cp949.patch
+          if ($LASTEXITCODE -ne 0) { throw "Historical patch does not cleanly apply to official v1.0.98" }
+          git -C templeplus apply ../minimal-cp949.patch
+          if ($LASTEXITCODE -ne 0) { throw "Historical patch apply failed" }
+
+          $changed = git -C templeplus diff --name-only
+          $expected = @(
+            'Infrastructure/include/infrastructure/stringutil.h',
+            'Infrastructure/stringutil.cpp',
+            'TemplePlus/gamesystems/gamesystems.cpp',
+            'TemplePlus/fonts/fonts_layout.cpp',
+            'TemplePlus/ui/widgets/widget_content.cpp'
+          )
+          $unexpected = $changed | Where-Object { $_ -notin $expected }
+          if ($unexpected) {
+            $unexpected | ForEach-Object { Write-Error "Unexpected changed file: $_" }
+            throw "Patch scope exceeded rendering-only allowlist"
+          }
+          if (($changed | Measure-Object).Count -ne 5) {
+            $changed | ForEach-Object { Write-Host "CHANGED $_" }
+            throw "Expected exactly 5 changed files"
+          }
+          git -C templeplus diff --check
+          if ($LASTEXITCODE -ne 0) { throw "git diff --check failed" }
+          $changed | ForEach-Object { Write-Host "ALLOWED $_" }
+
+      - name: Set up NuGet
+        uses: nuget/setup-nuget@v2
+
+      - name: Download TemplePlus dependencies
+        working-directory: templeplus
+        shell: pwsh
+        run: |
+          curl.exe -L -o dependencies.7z https://github.com/GrognardsFromHell/Dependencies/releases/download/v1.19/dependencies.7z
+          if ($LASTEXITCODE -ne 0) { throw "Dependency download failed" }
+          7z x dependencies.7z
+          if ($LASTEXITCODE -ne 0) { throw "Dependency extraction failed" }
+
+      - name: Restore NuGet packages
+        working-directory: templeplus
+        shell: pwsh
+        run: |
+          nuget install Squirrel.Windows -OutputDirectory Squirrel -Verbosity Detailed
+          if ($LASTEXITCODE -ne 0) { throw "Squirrel restore failed" }
+          nuget restore TemplePlus.sln
+          if ($LASTEXITCODE -ne 0) { throw "NuGet restore failed" }
+
+      - name: Build TemplePlus Win32 Release
+        working-directory: templeplus
+        shell: cmd
+        env:
+          TEMPLEPLUS_VERSION: 1.0.98
+          COMMIT_ID: KRCP949MIN
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars32.bat"
+          msbuild TemplePlus.sln /p:Configuration=Release /p:Platform=Win32 /p:MSBuildDefines="_TP_VERSION=%TEMPLEPLUS_VERSION%;_TP_COMMIT=%COMMIT_ID%;TP_RELEASE_BUILD" /m /verbosity:minimal
+
+      - name: Validate minimal binary signature
+        shell: pwsh
+        run: |
+          $exe = 'templeplus/Release/TemplePlus.exe'
+          if (-not (Test-Path $exe)) { throw "TemplePlus.exe missing" }
+          $bytes = [IO.File]::ReadAllBytes((Resolve-Path $exe))
+          $ascii = [Text.Encoding]::ASCII.GetString($bytes)
+          if (-not $ascii.Contains('Korean text mode enabled (CP949)')) {
+            throw "Minimal CP949 marker missing"
+          }
+          if ($ascii.Contains('Korean UTF-8 legacy text mode enabled')) {
+            throw "Hybrid UTF-8 legacy hook marker unexpectedly present"
+          }
+          Get-FileHash $exe -Algorithm SHA256 | Format-List
+          Get-Item $exe | Format-List Name,Length
+
+      - name: Upload minimal CP949 executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: TemplePlus-1.0.98-KR-CP949-MINIMAL
+          path: |
+            templeplus/Release/TemplePlus.exe
+            minimal-cp949.patch
+          if-no-files-found: error

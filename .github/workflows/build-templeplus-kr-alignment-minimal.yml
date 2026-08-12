@@ -44,8 +44,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           # The upstream v1.0.98 tree contains a legacy non-UTF8 byte in a source
-          # comment. Make only the patcher's file I/O byte-preserving; do not
-          # change any of the stable CP949 transformation logic.
+          # comment. Make only the patcher's file I/O and verification byte-safe;
+          # do not change any of the stable CP949 transformation logic.
           @'
           from pathlib import Path
           p = Path('stable_cp949_patcher.py')
@@ -65,11 +65,13 @@ jobs:
               if had_bom:
                   out = b"\\xef\\xbb\\xbf" + out
               path.write_bytes(out)'''
-          if text.count(old1) != 1 or text.count(old2) != 1:
-              raise SystemExit('stable patcher I/O guard failed')
-          text = text.replace(old1, new1).replace(old2, new2)
+          old3 = '        if needle not in (root / rel).read_text(encoding="utf-8"):'
+          new3 = '        if needle not in (root / rel).read_bytes().decode("utf-8", errors="surrogateescape"):'
+          if text.count(old1) != 1 or text.count(old2) != 1 or text.count(old3) != 1:
+              raise SystemExit('stable patcher I/O/verification guard failed')
+          text = text.replace(old1, new1).replace(old2, new2).replace(old3, new3)
           p.write_text(text, encoding='utf-8', newline='\n')
-          print('STABLE_PATCHER_IO_BYTESAFE_NEWLINE_SAFE')
+          print('STABLE_PATCHER_IO_AND_VERIFY_BYTESAFE')
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -235,7 +237,7 @@ jobs:
           Base:
           - official TemplePlus v1.0.98
           - proven stable CP949 transformation recovered from commit bf77e9530060621e3b3c2bfa38105ff759b86de1
-          - patcher I/O only made byte-preserving/newline-preserving for upstream legacy source encoding
+          - patcher I/O/verification only made byte-preserving/newline-preserving for upstream legacy source encoding
 
           Only new runtime change:
           - hook 0x10073C20

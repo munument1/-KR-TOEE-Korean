@@ -52,12 +52,16 @@ jobs:
           text = p.read_text(encoding='utf-8-sig')
           old1 = '    text = path.read_text(encoding="utf-8-sig")'
           new1 = '''    raw = path.read_bytes()
+              newline = "\\r\\n" if b"\\r\\n" in raw else "\\n"
               had_bom = raw.startswith(b"\\xef\\xbb\\xbf")
               if had_bom:
                   raw = raw[3:]
-              text = raw.decode("utf-8", errors="surrogateescape")'''
+              text = raw.decode("utf-8", errors="surrogateescape").replace("\\r\\n", "\\n")'''
           old2 = '    path.write_text(new_text, encoding="utf-8", newline="\\n")'
-          new2 = '''    out = new_text.encode("utf-8", errors="surrogateescape")
+          new2 = '''    out_text = new_text
+              if newline == "\\r\\n":
+                  out_text = out_text.replace("\\n", "\\r\\n")
+              out = out_text.encode("utf-8", errors="surrogateescape")
               if had_bom:
                   out = b"\\xef\\xbb\\xbf" + out
               path.write_bytes(out)'''
@@ -65,7 +69,7 @@ jobs:
               raise SystemExit('stable patcher I/O guard failed')
           text = text.replace(old1, new1).replace(old2, new2)
           p.write_text(text, encoding='utf-8', newline='\n')
-          print('STABLE_PATCHER_IO_BYTESAFE')
+          print('STABLE_PATCHER_IO_BYTESAFE_NEWLINE_SAFE')
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -231,7 +235,7 @@ jobs:
           Base:
           - official TemplePlus v1.0.98
           - proven stable CP949 transformation recovered from commit bf77e9530060621e3b3c2bfa38105ff759b86de1
-          - patcher I/O only made byte-preserving for the upstream legacy source encoding
+          - patcher I/O only made byte-preserving/newline-preserving for upstream legacy source encoding
 
           Only new runtime change:
           - hook 0x10073C20

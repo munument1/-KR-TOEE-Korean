@@ -53,7 +53,8 @@ jobs:
           Get-ChildItem work -Recurse -File | Where-Object {
             $_.Extension -in '.tab','.tsv' -or
             $_.FullName -match '[\\/](rules|tprules)[\\/]' -or
-            ($_.FullName -match '[\\/]TEMPLEPLUS_FOLDER[\\/]' -and $_.FullName -notmatch '[\\/]TEMPLEPLUS_FOLDER[\\/]tpdata[\\/]')
+            ($_.FullName -match '[\\/]TEMPLEPLUS_FOLDER[\\/]' -and
+             $_.FullName -notmatch '[\\/]TEMPLEPLUS_FOLDER[\\/](tpdata|fonts)[\\/]')
           } | ForEach-Object { $_.FullName.Substring((Resolve-Path work).Path.Length + 1) }
 
       - name: Remove engine and rule overrides
@@ -62,10 +63,11 @@ jobs:
           $root = (Resolve-Path work).Path
           $removed = [System.Collections.Generic.List[string]]::new()
 
-          # Never replace TemplePlus executables/DLLs/config binaries in the safe package.
+          # Keep only data and the verified font bundle at TemplePlus package root.
+          # Engine EXE/DLL/config overrides are intentionally not shipped.
           $tpRoot = Join-Path $root 'TEMPLEPLUS_FOLDER'
           if (Test-Path $tpRoot) {
-            Get-ChildItem $tpRoot -Force | Where-Object { $_.Name -ne 'tpdata' } | ForEach-Object {
+            Get-ChildItem $tpRoot -Force | Where-Object { $_.Name -notin @('tpdata','fonts') } | ForEach-Object {
               $removed.Add($_.FullName.Substring($root.Length + 1))
               Remove-Item -LiteralPath $_.FullName -Recurse -Force
             }
@@ -79,7 +81,6 @@ jobs:
             Remove-Item -LiteralPath $_.FullName -Force
           }
 
-          # Remove empty directories left by the safety filter.
           Get-ChildItem $root -Recurse -Directory | Sort-Object FullName -Descending | ForEach-Object {
             if (-not (Get-ChildItem $_.FullName -Force | Select-Object -First 1)) {
               Remove-Item -LiteralPath $_.FullName -Force
@@ -102,7 +103,8 @@ jobs:
           3. TEMPLEPLUS_FOLDER 내용을 TemplePlus app-1.0.98 폴더에 복사/덮어쓰기합니다.
 
           안정성 정책:
-          - TemplePlus 실행 EXE/DLL 등 엔진 바이너리는 포함하지 않습니다.
+          - TemplePlus.exe 등 엔진 바이너리는 포함하지 않습니다.
+          - 기존 검증된 TEMPLEPLUS_FOLDER/fonts 폰트 번들은 유지합니다.
           - TAB/TSV 및 rules/tprules 런타임 규칙 파일은 포함하지 않습니다.
           - 해당 영역은 영어/기본 표시가 남아도 정상입니다.
           - 대화/MES/폰트/UI/슬라이드 등 기존 검증된 표시 리소스만 유지합니다.
@@ -125,11 +127,16 @@ jobs:
           $bad = Get-ChildItem work -Recurse -File | Where-Object {
             $_.Extension -in '.tab','.tsv' -or
             $_.FullName -match '[\\/](rules|tprules)[\\/]' -or
-            ($_.FullName -match '[\\/]TEMPLEPLUS_FOLDER[\\/]' -and $_.FullName -notmatch '[\\/]TEMPLEPLUS_FOLDER[\\/]tpdata[\\/]')
+            ($_.FullName -match '[\\/]TEMPLEPLUS_FOLDER[\\/]' -and
+             $_.FullName -notmatch '[\\/]TEMPLEPLUS_FOLDER[\\/](tpdata|fonts)[\\/]')
           }
           if ($bad) {
             $bad | ForEach-Object { Write-Error $_.FullName }
             throw "Runtime-sensitive files remain in safe package"
+          }
+
+          if (-not (Test-Path "work/TEMPLEPLUS_FOLDER/fonts/mapping.json")) {
+            throw "Font mapping bundle was lost during sanitize"
           }
 
           $files = Get-ChildItem work -Recurse -File

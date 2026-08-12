@@ -84,8 +84,11 @@ jobs:
           verify_old = '''        if needle not in (root / rel).read_text(encoding="utf-8"):
           '''
           verify_new = '''        verify_encoding = "cp1252" if rel.endswith("fonts_layout.cpp") else "utf-8-sig"
-              if needle not in (root / rel).read_text(encoding=verify_encoding):
+                  if needle not in (root / rel).read_text(encoding=verify_encoding):
           '''
+          # The YAML block removes 10 leading spaces from each physical line;
+          # reduce the second replacement line to the same eight Python spaces.
+          verify_new = verify_new.replace("            if needle", "        if needle")
           if verify_old not in s:
               raise SystemExit('verification read block not found in historical patcher')
           s = s.replace(verify_old, verify_new, 1)

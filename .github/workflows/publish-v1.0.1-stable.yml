@@ -29,23 +29,27 @@ jobs:
             --name TOEE_Korean_MINIMAL_CP949_EXE_TEST_WIN2022 `
             --dir verified
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem verified -Recurse | ForEach-Object { Write-Host $_.FullName }
 
       - name: Verify executable and prepare final copy-paste ZIP
         shell: powershell
         run: |
           $expectedExe = '27325C5E4E4C4519045B98226EFE133E82703E5B0E7C5A651A58CC1B1CBE686E'
-          $exe = 'verified/TemplePlus.exe'
-          $testZip = 'verified/TOEE_Korean_Patch_MINIMAL_CP949_EXE_TEST_20260812.zip'
+          $exe = Get-ChildItem verified -Recurse -File -Filter 'TemplePlus.exe' | Select-Object -First 1
+          $testZip = Get-ChildItem verified -Recurse -File -Filter 'TOEE_Korean_Patch_MINIMAL_CP949_EXE_TEST_20260812.zip' | Select-Object -First 1
 
-          if (-not (Test-Path $exe)) { throw 'Verified TemplePlus.exe missing' }
-          if (-not (Test-Path $testZip)) { throw 'Verified test ZIP missing' }
+          if (-not $exe) { throw 'Verified TemplePlus.exe missing' }
+          if (-not $testZip) { throw 'Verified test ZIP missing' }
 
-          $exeHash = (Get-FileHash $exe -Algorithm SHA256).Hash
+          Write-Host "Using executable: $($exe.FullName)"
+          Write-Host "Using package: $($testZip.FullName)"
+
+          $exeHash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
           if ($exeHash -ne $expectedExe) {
             throw "Executable hash mismatch: $exeHash"
           }
 
-          Expand-Archive -LiteralPath $testZip -DestinationPath package -Force
+          Expand-Archive -LiteralPath $testZip.FullName -DestinationPath package -Force
 
           $innerExe = 'package/TEMPLEPLUS_FOLDER/TemplePlus.exe'
           if (-not (Test-Path $innerExe)) { throw 'TemplePlus.exe missing inside package' }

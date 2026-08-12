@@ -1,0 +1,155 @@
+name: Build Copy-Paste Safe Patch
+
+on:
+  push:
+    branches:
+      - agent/copy-paste-safe
+    paths:
+      - ".github/workflows/build-copy-paste-safe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sanitize:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download current v1.0.0 copy-paste package
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force -Path input | Out-Null
+          gh release download v1.0.0 `
+            --repo munument1/-KR-TOEE-Korean `
+            --pattern "TOEE_Korean_Patch_STABLE_CP949_ActualInstall_20260812.zip" `
+            --dir input
+          Get-ChildItem input | Format-Table Name,Length
+
+      - name: Extract and inspect package
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem input -Filter *.zip | Select-Object -First 1
+          if (-not $zip) { throw "Base release ZIP not found" }
+          New-Item -ItemType Directory -Force -Path work | Out-Null
+          Expand-Archive -LiteralPath $zip.FullName -DestinationPath work -Force
+
+          "=== TOP LEVEL ==="
+          Get-ChildItem work | Format-Table Name,Mode
+
+          "=== TEMPLEPLUS ROOT FILES ==="
+          if (Test-Path "work/TEMPLEPLUS_FOLDER") {
+            Get-ChildItem "work/TEMPLEPLUS_FOLDER" -File -Recurse:$false | `
+              Select-Object Name,Length,@{N='SHA256';E={(Get-FileHash $_.FullName -Algorithm SHA256).Hash}} | `
+              Format-Table -AutoSize
+          }
+
+          "=== RUNTIME-SENSITIVE FILES BEFORE SANITIZE ==="
+          Get-ChildItem work -Recurse -File | Where-Object {
+            $_.Extension -in '.tab','.tsv' -or
+            $_.FullName -match '[\\/](rules|tprules)[\\/]' -or
+            ($_.FullName -match '[\\/]TEMPLEPLUS_FOLDER[\\/]' -and $_.FullName -notmatch '[\\/]TEMPLEPLUS_FOLDER[\\/]tpdata[\\/]')
+          } | ForEach-Object { $_.FullName.Substring((Resolve-Path work).Path.Length + 1) }
+
+      - name: Remove engine and rule overrides
+        shell: pwsh
+        run: |
+          $root = (Resolve-Path work).Path
+          $removed = [System.Collections.Generic.List[string]]::new()
+
+          # Never replace TemplePlus executables/DLLs/config binaries in the safe package.
+          $tpRoot = Join-Path $root 'TEMPLEPLUS_FOLDER'
+          if (Test-Path $tpRoot) {
+            Get-ChildItem $tpRoot -Force | Where-Object { $_.Name -ne 'tpdata' } | ForEach-Object {
+              $removed.Add($_.FullName.Substring($root.Length + 1))
+              Remove-Item -LiteralPath $_.FullName -Recurse -Force
+            }
+          }
+
+          # Keep game/runtime rule parsers on the user's original install.
+          Get-ChildItem $root -Recurse -File | Where-Object {
+            $_.Extension -in '.tab','.tsv' -or $_.FullName -match '[\\/](rules|tprules)[\\/]'
+          } | ForEach-Object {
+            $removed.Add($_.FullName.Substring($root.Length + 1))
+            Remove-Item -LiteralPath $_.FullName -Force
+          }
+
+          # Remove empty directories left by the safety filter.
+          Get-ChildItem $root -Recurse -Directory | Sort-Object FullName -Descending | ForEach-Object {
+            if (-not (Get-ChildItem $_.FullName -Force | Select-Object -First 1)) {
+              Remove-Item -LiteralPath $_.FullName -Force
+            }
+          }
+
+          $removed | Sort-Object -Unique | Set-Content -Encoding UTF8 removed_for_stability.txt
+          "Removed $((Get-Content removed_for_stability.txt).Count) runtime-sensitive entries."
+          Get-Content removed_for_stability.txt
+
+      - name: Add safe-install notice
+        shell: pwsh
+        run: |
+          @'
+          TOEE 한국어 패치 - 보수적 안정판 (복붙형)
+
+          설치:
+          1. 공식 TemplePlus 1.0.98 및 TOEE/Co8가 정상 동작하는 깨끗한 설치본을 준비합니다.
+          2. GAME_FOLDER 내용을 TOEE 게임 폴더에 복사/덮어쓰기합니다.
+          3. TEMPLEPLUS_FOLDER 내용을 TemplePlus app-1.0.98 폴더에 복사/덮어쓰기합니다.
+
+          안정성 정책:
+          - TemplePlus 실행 EXE/DLL 등 엔진 바이너리는 포함하지 않습니다.
+          - TAB/TSV 및 rules/tprules 런타임 규칙 파일은 포함하지 않습니다.
+          - 해당 영역은 영어/기본 표시가 남아도 정상입니다.
+          - 대화/MES/폰트/UI/슬라이드 등 기존 검증된 표시 리소스만 유지합니다.
+
+          기존 실험판/문제판을 이미 덮어쓴 설치본에는 이 ZIP을 다시 덮는 것만으로
+          삭제된 엔진/규칙 파일이 원복되지 않습니다. 공식 TemplePlus 1.0.98 및 게임/Co8
+          원본을 복구하거나 재설치한 뒤 이 패치를 적용하십시오.
+
+          회귀 테스트 우선순위:
+          - 일반 근접/원거리 공격의 명중/빗나감 판정
+          - 전투 롤 히스토리/로그
+          - NPC 일반 공격
+          - 주문 시전
+          - 대화/선택지/폰트/UI 표시
+          '@ | Set-Content -Path "work/README_SAFE_COPYPASTE.txt" -Encoding UTF8
+
+      - name: Validate safe package
+        shell: pwsh
+        run: |
+          $bad = Get-ChildItem work -Recurse -File | Where-Object {
+            $_.Extension -in '.tab','.tsv' -or
+            $_.FullName -match '[\\/](rules|tprules)[\\/]' -or
+            ($_.FullName -match '[\\/]TEMPLEPLUS_FOLDER[\\/]' -and $_.FullName -notmatch '[\\/]TEMPLEPLUS_FOLDER[\\/]tpdata[\\/]')
+          }
+          if ($bad) {
+            $bad | ForEach-Object { Write-Error $_.FullName }
+            throw "Runtime-sensitive files remain in safe package"
+          }
+
+          $files = Get-ChildItem work -Recurse -File
+          "Safe package file count: $($files.Count)"
+          "Safe package bytes: $((($files | Measure-Object Length -Sum).Sum))"
+
+      - name: Build copy-paste ZIP
+        shell: pwsh
+        run: |
+          $out = "TOEE_Korean_Patch_SAFE_COPYPASTE_20260812.zip"
+          if (Test-Path $out) { Remove-Item $out -Force }
+          Compress-Archive -Path "work/*" -DestinationPath $out -CompressionLevel Optimal
+          Get-FileHash $out -Algorithm SHA256 | Format-List
+          Get-Item $out | Format-List Name,Length
+
+      - name: Upload safe copy-paste patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: TOEE_Korean_Patch_SAFE_COPYPASTE_20260812
+          path: |
+            TOEE_Korean_Patch_SAFE_COPYPASTE_20260812.zip
+            removed_for_stability.txt
+          if-no-files-found: error

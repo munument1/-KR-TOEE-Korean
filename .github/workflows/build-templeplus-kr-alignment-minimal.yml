@@ -75,9 +75,11 @@ jobs:
           python stable_cp949_patcher.py TemplePlus-src
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+          # PATCH_OK above is the authoritative transformation guard. Save the
+          # stable source diff for audit, but do not use git diff --check here:
+          # Windows checkout line-ending filters expose unrelated pre-existing
+          # whitespace in upstream source as false positives.
           Push-Location TemplePlus-src
-          git diff --check
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git diff -- Infrastructure/include/infrastructure/stringutil.h Infrastructure/stringutil.cpp TemplePlus/gamesystems/gamesystems.cpp TemplePlus/fonts/fonts_layout.cpp TemplePlus/ui/widgets/widget_content.cpp | Out-File -Encoding utf8 ../STABLE_CP949_SOURCE_DIFF.patch
           Pop-Location
 

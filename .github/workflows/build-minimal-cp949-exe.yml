@@ -29,20 +29,24 @@ jobs:
           ref: v1.0.98
           path: templeplus
 
-      - name: Restore original CP949-only patch from history
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Restore original CP949-only patcher from history
         shell: pwsh
         run: |
-          git -C krpatch show f97ee0d8d21f7ff71a7e6458a2864b0ec30ac62d:tools/templeplus-1.0.98-korean-cp949.patch | Set-Content -Path minimal-cp949.patch -Encoding utf8NoBOM
-          if ($LASTEXITCODE -ne 0) { throw "Unable to restore historical CP949 patch" }
-          Get-Content minimal-cp949.patch -TotalCount 30
+          git -C krpatch show bf77e9530060621e3b3c2bfa38105ff759b86de1:tools/apply_templeplus_cp949_patch.py | Set-Content -Path apply_minimal_cp949.py -Encoding utf8NoBOM
+          if ($LASTEXITCODE -ne 0) { throw "Unable to restore historical CP949 patcher" }
+          git -C krpatch show f97ee0d8d21f7ff71a7e6458a2864b0ec30ac62d:tools/templeplus-1.0.98-korean-cp949.patch | Set-Content -Path minimal-cp949-reference.patch -Encoding utf8NoBOM
+          if ($LASTEXITCODE -ne 0) { throw "Unable to restore reference diff" }
 
       - name: Apply only the historical rendering patch
         shell: pwsh
         run: |
-          git -C templeplus apply --check ../minimal-cp949.patch
-          if ($LASTEXITCODE -ne 0) { throw "Historical patch does not cleanly apply to official v1.0.98" }
-          git -C templeplus apply ../minimal-cp949.patch
-          if ($LASTEXITCODE -ne 0) { throw "Historical patch apply failed" }
+          python apply_minimal_cp949.py templeplus
+          if ($LASTEXITCODE -ne 0) { throw "Historical CP949 patcher failed" }
 
           $changed = git -C templeplus diff --name-only
           $expected = @(
@@ -118,5 +122,6 @@ jobs:
           name: TemplePlus-1.0.98-KR-CP949-MINIMAL
           path: |
             templeplus/Release/TemplePlus.exe
-            minimal-cp949.patch
+            apply_minimal_cp949.py
+            minimal-cp949-reference.patch
           if-no-files-found: error

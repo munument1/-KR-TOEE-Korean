@@ -41,6 +41,11 @@ jobs:
         run: |
           python tools/templeplus_runtime/apply_kr_legacy_text_hooks_core.py TemplePlus-src
 
+      - name: Synchronize legacy alignment and gender pointer tables
+        shell: powershell
+        run: |
+          python tools/templeplus_runtime/apply_kr_legacy_pointer_tables.py TemplePlus-src
+
       - name: Download and extract TemplePlus dependencies
         shell: powershell
         working-directory: TemplePlus-src
@@ -60,7 +65,7 @@ jobs:
         working-directory: TemplePlus-src
         env:
           TEMPLEPLUS_VERSION: 1.0.98-KR
-          COMMIT_ID: KRHOOKS
+          COMMIT_ID: KRTABLES
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
@@ -76,23 +81,27 @@ jobs:
           New-Item -ItemType Directory -Force -Path artifact | Out-Null
           Copy-Item TemplePlus-src/Release/TemplePlus.exe artifact/TemplePlus.exe
           @"
-          TemplePlus 1.0.98 Korean runtime test
+          TemplePlus 1.0.98 Korean runtime test V2
           Branch: templeplus-kr-legacy-hooks
 
-          Applied source changes:
+          Added in V2:
+          - synchronize temple.dll legacy alignment pointer table 0x10AAE89C from localized stat.mes
+          - synchronize temple.dll legacy gender pointer table 0x10AAE410 from localized stat.mes
+
+          Existing core changes:
           - strict UTF-8 decode + CP949 fallback
           - 0x10073A30 gender name -> stat.mes 4000/4001
           - 0x10073B40 alignment short desc -> stat.mes 16000+alignment
           - 0x10073C20 party alignment name -> stat.mes 6000+alignment
           - 0x1001FA80 display name -> localized description lookup
 
-          Bark hooks are NOT included in this core test build.
+          Bark hooks are NOT included.
           "@ | Set-Content -Encoding UTF8 artifact/README_TEST.txt
-          Compress-Archive -Path artifact/* -DestinationPath TemplePlus_1.0.98_KR_LegacyHooks_CORE_TEST.zip -Force
+          Compress-Archive -Path artifact/* -DestinationPath TemplePlus_1.0.98_KR_LegacyTables_V2_TEST.zip -Force
 
-      - name: Upload core test runtime
+      - name: Upload V2 test runtime
         uses: actions/upload-artifact@v4
         with:
-          name: TemplePlus-KR-LegacyHooks-Core-Test
-          path: TemplePlus_1.0.98_KR_LegacyHooks_CORE_TEST.zip
+          name: TemplePlus-KR-LegacyTables-V2-Test
+          path: TemplePlus_1.0.98_KR_LegacyTables_V2_TEST.zip
           if-no-files-found: error

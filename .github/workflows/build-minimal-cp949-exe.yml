@@ -42,6 +42,48 @@ jobs:
           git -C krpatch show f97ee0d8d21f7ff71a7e6458a2864b0ec30ac62d:tools/templeplus-1.0.98-korean-cp949.patch | Set-Content -Path minimal-cp949-reference.patch -Encoding utf8NoBOM
           if ($LASTEXITCODE -ne 0) { throw "Unable to restore reference diff" }
 
+      - name: Make historical patcher preserve source encoding
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          p = Path('apply_minimal_cp949.py')
+          s = p.read_text(encoding='utf-8')
+          old = '''def patch_file(path: Path, transform):
+              text = path.read_text(encoding="utf-8-sig")
+              new_text = transform(text)
+              if new_text == text:
+                  raise RuntimeError(f"No changes made to {path}")
+              path.write_text(new_text, encoding="utf-8", newline="\\n")
+              print(f"patched {path}")
+          '''
+          new = '''def patch_file(path: Path, transform):
+              raw = path.read_bytes()
+              text = None
+              used_encoding = None
+              for enc in ("utf-8-sig", "utf-8", "cp1252"):
+                  try:
+                      text = raw.decode(enc)
+                      used_encoding = enc
+                      break
+                  except UnicodeDecodeError:
+                      pass
+              if text is None or used_encoding is None:
+                  raise RuntimeError(f"Unable to decode source file: {path}")
+              new_text = transform(text)
+              if new_text == text:
+                  raise RuntimeError(f"No changes made to {path}")
+              out_encoding = "utf-8-sig" if used_encoding == "utf-8-sig" else used_encoding
+              path.write_text(new_text, encoding=out_encoding, newline="\\n")
+              print(f"patched {path} encoding={used_encoding}")
+          '''
+          if old not in s:
+              raise SystemExit('patch_file block not found in historical patcher')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8', newline='\n')
+          print('PATCHER_ENCODING_FIX_OK')
+          '@ | Set-Content -Path fix_patcher.py -Encoding utf8NoBOM
+          python fix_patcher.py
+
       - name: Apply only the historical rendering patch
         shell: pwsh
         run: |

@@ -43,25 +43,22 @@ jobs:
           cmd.exe /c "git show bf77e9530060621e3b3c2bfa38105ff759b86de1:tools/apply_templeplus_cp949_patch.py > stable_cp949_patcher.py"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-          # The upstream v1.0.98 tree contains a legacy non-UTF8 byte in a source
-          # comment. Make only the patcher's file I/O and verification byte-safe;
-          # do not change any of the stable CP949 transformation logic.
+          # Upstream v1.0.98 has a legacy non-UTF8 byte in a source comment.
+          # Keep the historical transformation itself unchanged. Only make its
+          # source I/O and final verification byte-safe. Like the historical
+          # patcher, patched files are emitted with LF line endings.
           @'
           from pathlib import Path
           p = Path('stable_cp949_patcher.py')
           text = p.read_text(encoding='utf-8-sig')
           old1 = '    text = path.read_text(encoding="utf-8-sig")'
           new1 = '''    raw = path.read_bytes()
-              newline = "\\r\\n" if b"\\r\\n" in raw else "\\n"
               had_bom = raw.startswith(b"\\xef\\xbb\\xbf")
               if had_bom:
                   raw = raw[3:]
               text = raw.decode("utf-8", errors="surrogateescape").replace("\\r\\n", "\\n")'''
           old2 = '    path.write_text(new_text, encoding="utf-8", newline="\\n")'
-          new2 = '''    out_text = new_text
-              if newline == "\\r\\n":
-                  out_text = out_text.replace("\\n", "\\r\\n")
-              out = out_text.encode("utf-8", errors="surrogateescape")
+          new2 = '''    out = new_text.encode("utf-8", errors="surrogateescape")
               if had_bom:
                   out = b"\\xef\\xbb\\xbf" + out
               path.write_bytes(out)'''
@@ -71,7 +68,7 @@ jobs:
               raise SystemExit('stable patcher I/O/verification guard failed')
           text = text.replace(old1, new1).replace(old2, new2).replace(old3, new3)
           p.write_text(text, encoding='utf-8', newline='\n')
-          print('STABLE_PATCHER_IO_AND_VERIFY_BYTESAFE')
+          print('STABLE_PATCHER_BYTESAFE_LF_OUTPUT')
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -237,7 +234,7 @@ jobs:
           Base:
           - official TemplePlus v1.0.98
           - proven stable CP949 transformation recovered from commit bf77e9530060621e3b3c2bfa38105ff759b86de1
-          - patcher I/O/verification only made byte-preserving/newline-preserving for upstream legacy source encoding
+          - patcher I/O/verification only made byte-safe for upstream legacy source encoding
 
           Only new runtime change:
           - hook 0x10073C20

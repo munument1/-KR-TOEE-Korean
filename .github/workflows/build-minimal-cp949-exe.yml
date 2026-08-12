@@ -142,7 +142,11 @@ jobs:
           TEMPLEPLUS_VERSION: 1.0.98
           COMMIT_ID: KRCP949MIN
         run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars32.bat"
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -property installationPath`) do set VSROOT=%%i
+          if not defined VSROOT exit /b 10
+          echo Visual Studio: %VSROOT%
+          call "%VSROOT%\VC\Auxiliary\Build\vcvars32.bat"
+          if errorlevel 1 exit /b %errorlevel%
           msbuild TemplePlus.sln /p:Configuration=Release /p:Platform=Win32 /p:MSBuildDefines="_TP_VERSION=%TEMPLEPLUS_VERSION%;_TP_COMMIT=%COMMIT_ID%;TP_RELEASE_BUILD" /verbosity:minimal
 
       - name: Validate minimal executable

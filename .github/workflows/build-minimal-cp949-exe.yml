@@ -80,8 +80,17 @@ jobs:
           '''
           if old not in s:
               raise SystemExit('patch_file block not found in historical patcher')
-          p.write_text(s.replace(old, new, 1), encoding='utf-8', newline='\n')
-          print('PATCHER_ENCODING_NEWLINE_FIX_OK')
+          s = s.replace(old, new, 1)
+          verify_old = '''        if needle not in (root / rel).read_text(encoding="utf-8"):
+          '''
+          verify_new = '''        verify_encoding = "cp1252" if rel.endswith("fonts_layout.cpp") else "utf-8-sig"
+              if needle not in (root / rel).read_text(encoding=verify_encoding):
+          '''
+          if verify_old not in s:
+              raise SystemExit('verification read block not found in historical patcher')
+          s = s.replace(verify_old, verify_new, 1)
+          p.write_text(s, encoding='utf-8', newline='\n')
+          print('PATCHER_ENCODING_NEWLINE_VERIFY_FIX_OK')
           '@ | Set-Content -Path fix_patcher.py -Encoding utf8NoBOM
           python fix_patcher.py
 

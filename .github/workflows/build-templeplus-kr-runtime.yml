@@ -1,0 +1,93 @@
+name: Build TemplePlus KR Runtime Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - templeplus-kr-legacy-hooks
+    paths:
+      - '.github/workflows/build-templeplus-kr-runtime.yml'
+      - 'tools/templeplus_runtime/**'
+
+jobs:
+  build:
+    name: Build TemplePlus 1.0.98 KR hooks
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Korean patch repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up NuGet
+        uses: nuget/setup-nuget@v2
+
+      - name: Clone TemplePlus v1.0.98
+        shell: powershell
+        run: |
+          git clone --depth 1 --branch v1.0.98 https://github.com/GrognardsFromHell/TemplePlus.git TemplePlus-src
+
+      - name: Apply Korean runtime encoding patch
+        shell: powershell
+        run: |
+          python tools/templeplus_runtime/apply_kr_stringutil_patch.py TemplePlus-src
+
+      - name: Apply Korean legacy text core hooks
+        shell: powershell
+        run: |
+          python tools/templeplus_runtime/apply_kr_legacy_text_hooks_core.py TemplePlus-src
+
+      - name: Download and extract TemplePlus dependencies
+        shell: powershell
+        working-directory: TemplePlus-src
+        run: |
+          curl.exe -L -o dependencies.7z https://github.com/GrognardsFromHell/Dependencies/releases/download/v1.19/dependencies.7z
+          7z x dependencies.7z
+
+      - name: Restore NuGet packages
+        shell: powershell
+        working-directory: TemplePlus-src
+        run: |
+          nuget install Squirrel.Windows -OutputDirectory Squirrel -Verbosity Detailed
+          nuget restore
+
+      - name: Build Win32 Release
+        shell: cmd
+        working-directory: TemplePlus-src
+        env:
+          TEMPLEPLUS_VERSION: 1.0.98-KR
+          COMMIT_ID: KRHOOKS
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars32.bat"
+          msbuild TemplePlus.sln /p:Configuration=Release /p:Platform=Win32 /p:MSBuildDefines="_TP_VERSION=%TEMPLEPLUS_VERSION%;_TP_COMMIT=%COMMIT_ID%;TP_RELEASE_BUILD" /verbosity:minimal
+
+      - name: Package test runtime
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+          Copy-Item TemplePlus-src/Release/TemplePlus.exe artifact/TemplePlus.exe
+          @"
+          TemplePlus 1.0.98 Korean runtime test
+          Branch: templeplus-kr-legacy-hooks
+
+          Applied source changes:
+          - strict UTF-8 decode + CP949 fallback
+          - 0x10073A30 gender name -> stat.mes 4000/4001
+          - 0x10073B40 alignment short desc -> stat.mes 16000+alignment
+          - 0x10073C20 party alignment name -> stat.mes 6000+alignment
+          - 0x1001FA80 display name -> localized description lookup
+
+          Bark hooks are NOT included in this core test build.
+          "@ | Set-Content -Encoding UTF8 artifact/README_TEST.txt
+          Compress-Archive -Path artifact/* -DestinationPath TemplePlus_1.0.98_KR_LegacyHooks_CORE_TEST.zip -Force
+
+      - name: Upload core test runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: TemplePlus-KR-LegacyHooks-Core-Test
+          path: TemplePlus_1.0.98_KR_LegacyHooks_CORE_TEST.zip
+          if-no-files-found: error

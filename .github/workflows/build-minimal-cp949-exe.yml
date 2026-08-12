@@ -60,14 +60,15 @@ jobs:
               path.write_text(new_text, encoding="utf-8", newline="\\n")
               print(f"patched {path}")
           '''
-          new_patch_file = '''def patch_file(path: Path, transform):
+          new_patch_file = '''def read_source_text(path: Path):
               raw = path.read_bytes()
-              source_encoding = "utf-8"
               try:
-                  text = raw.decode("utf-8-sig")
+                  return raw.decode("utf-8-sig"), "utf-8"
               except UnicodeDecodeError:
-                  source_encoding = "cp1252"
-                  text = raw.decode(source_encoding)
+                  return raw.decode("cp1252"), "cp1252"
+
+          def patch_file(path: Path, transform):
+              text, source_encoding = read_source_text(path)
               text = text.replace("\\r\\n", "\\n").replace("\\r", "\\n")
               new_text = transform(text)
               if new_text == text:
@@ -79,22 +80,10 @@ jobs:
               raise SystemExit("historical patch_file function not found")
           text = text.replace(old_patch_file, new_patch_file, 1)
 
-          old_verify = '''    for rel, needle in checks.items():
-              if needle not in (root / rel).read_text(encoding="utf-8"):
-                  raise RuntimeError(f"verification failed: {rel} missing {needle}")
-          '''
-          new_verify = '''    for rel, needle in checks.items():
-              raw = (root / rel).read_bytes()
-              try:
-                  check_text = raw.decode("utf-8-sig")
-              except UnicodeDecodeError:
-                  check_text = raw.decode("cp1252")
-              if needle not in check_text:
-                  raise RuntimeError(f"verification failed: {rel} missing {needle}")
-          '''
-          if old_verify not in text:
-              raise SystemExit("historical verification loop not found")
-          text = text.replace(old_verify, new_verify, 1)
+          old_expr = '(root / rel).read_text(encoding="utf-8")'
+          if old_expr not in text:
+              raise SystemExit("historical verification read expression not found")
+          text = text.replace(old_expr, 'read_source_text(root / rel)[0]', 1)
 
           p.write_text(text, encoding="utf-8", newline="\n")
           print("PATCH_HELPER_ENCODING_OK")

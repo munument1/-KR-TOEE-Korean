@@ -1,0 +1,184 @@
+name: Build Minimal CP949 TemplePlus Win2022
+
+on:
+  push:
+    branches:
+      - agent/minimal-cp949-exe
+    paths:
+      - ".github/workflows/build-minimal-cp949-win2022.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout workflow branch
+        uses: actions/checkout@v4
+        with:
+          path: current
+
+      - name: Checkout historical minimal Korean patch
+        uses: actions/checkout@v4
+        with:
+          repository: munument1/-KR-TOEE-Korean
+          ref: bf77e9530060621e3b3c2bfa38105ff759b86de1
+          path: legacy_patch
+
+      - name: Checkout official TemplePlus v1.0.98
+        uses: actions/checkout@v4
+        with:
+          repository: GrognardsFromHell/TemplePlus
+          ref: v1.0.98
+          path: templeplus
+
+      - name: Set up NuGet
+        uses: nuget/setup-nuget@v1
+
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Make historical patch helper encoding-safe
+        shell: powershell
+        run: |
+          @'
+          from pathlib import Path
+          p = Path("legacy_patch/tools/apply_templeplus_cp949_patch.py")
+          text = p.read_text(encoding="utf-8")
+          old = '''def patch_file(path: Path, transform):
+              text = path.read_text(encoding="utf-8-sig")
+              new_text = transform(text)
+              if new_text == text:
+                  raise RuntimeError(f"No changes made to {path}")
+              path.write_text(new_text, encoding="utf-8", newline="\\n")
+              print(f"patched {path}")
+          '''
+          new = '''def read_source_text(path: Path):
+              raw = path.read_bytes()
+              try:
+                  return raw.decode("utf-8-sig"), "utf-8"
+              except UnicodeDecodeError:
+                  return raw.decode("cp1252"), "cp1252"
+
+          def patch_file(path: Path, transform):
+              text, source_encoding = read_source_text(path)
+              text = text.replace("\\r\\n", "\\n").replace("\\r", "\\n")
+              new_text = transform(text)
+              if new_text == text:
+                  raise RuntimeError(f"No changes made to {path}")
+              path.write_bytes(new_text.encode(source_encoding))
+              print(f"patched {path} [{source_encoding}]")
+          '''
+          if old not in text:
+              raise SystemExit("patch_file not found")
+          text = text.replace(old, new, 1)
+          expr = '(root / rel).read_text(encoding="utf-8")'
+          if expr not in text:
+              raise SystemExit("verification expression not found")
+          text = text.replace(expr, 'read_source_text(root / rel)[0]', 1)
+          p.write_text(text, encoding="utf-8", newline="\n")
+          '@ | python -
+
+      - name: Apply exact historical five-file CP949 patch
+        shell: powershell
+        run: |
+          python legacy_patch/tools/apply_templeplus_cp949_patch.py templeplus
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Push-Location templeplus
+          $changed = @(git diff --name-only)
+          $allowed = @(
+            'Infrastructure/include/infrastructure/stringutil.h',
+            'Infrastructure/stringutil.cpp',
+            'TemplePlus/gamesystems/gamesystems.cpp',
+            'TemplePlus/fonts/fonts_layout.cpp',
+            'TemplePlus/ui/widgets/widget_content.cpp'
+          )
+          $unexpected = @($changed | Where-Object { $_ -notin $allowed })
+          $changed | ForEach-Object { Write-Host "CHANGED $_" }
+          if ($unexpected.Count -gt 0) { throw ('Unexpected changes: ' + ($unexpected -join ', ')) }
+          if ($changed.Count -ne 5) { throw "Expected 5 changed source files, got $($changed.Count)" }
+          Pop-Location
+
+      - name: Download and extract official dependencies
+        working-directory: templeplus
+        shell: powershell
+        run: |
+          curl.exe -L -o dependencies.7z https://github.com/GrognardsFromHell/Dependencies/releases/download/v1.19/dependencies.7z
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          7z x dependencies.7z
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Restore NuGet packages
+        working-directory: templeplus
+        shell: powershell
+        run: |
+          nuget install Squirrel.Windows -OutputDirectory Squirrel -Verbosity Detailed
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          nuget restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build patched TemplePlus
+        working-directory: templeplus
+        shell: cmd
+        env:
+          TEMPLEPLUS_VERSION: 1.0.98
+          COMMIT_ID: KRCP949MIN
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars32.bat"
+          msbuild TemplePlus.sln /p:Configuration=Release /p:Platform=Win32 /p:MSBuildDefines="_TP_VERSION=%TEMPLEPLUS_VERSION%;_TP_COMMIT=%COMMIT_ID%;TP_RELEASE_BUILD" /verbosity:minimal
+
+      - name: Validate executable
+        shell: powershell
+        run: |
+          $exe = 'templeplus/Release/TemplePlus.exe'
+          if (-not (Test-Path $exe)) { throw 'TemplePlus.exe missing' }
+          $bytes = [System.IO.File]::ReadAllBytes($exe)
+          $ascii = [System.Text.Encoding]::ASCII.GetString($bytes)
+          if (-not $ascii.Contains('Korean text mode enabled (CP949)')) { throw 'CP949 marker missing' }
+          if ($ascii.Contains('Korean UTF-8 legacy text mode enabled')) { throw 'KRUTF8 marker unexpectedly present' }
+          Get-FileHash $exe -Algorithm SHA256 | Format-List
+          Get-Item $exe | Format-List Name,Length
+
+      - name: Build copy-paste test ZIP
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force -Path input | Out-Null
+          gh release download v1.0.0 --repo munument1/-KR-TOEE-Korean --pattern "TOEE_Korean_Patch_STABLE_CP949_ActualInstall_20260812.zip" --dir input
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $base = Get-ChildItem input -Filter *.zip | Select-Object -First 1
+          if (-not $base) { throw 'Base release ZIP missing' }
+          Expand-Archive -LiteralPath $base.FullName -DestinationPath package -Force
+          Copy-Item templeplus/Release/TemplePlus.exe package/TEMPLEPLUS_FOLDER/TemplePlus.exe -Force
+          @'
+          TOEE 한국어 패치 - 최소 CP949 EXE 전투 회귀 테스트판
+
+          기존 v1.0.0 복붙 패키지에서 TemplePlus.exe만 교체했습니다.
+          새 EXE는 공식 TemplePlus v1.0.98 + 초기 한글 렌더링용 CP949 최소 5파일 패치입니다.
+          AI/전투/action sequence/tab parser/rules 소스는 수정하지 않았습니다.
+
+          우선 확인:
+          1. 플레이어 근접 공격 명중/빗나감 및 롤 히스토리
+          2. 플레이어 원거리 공격
+          3. NPC 근접/원거리 공격
+          4. 주문 공격
+          5. NPC 이름/bark/대화/UI 한글
+          '@ | Set-Content package/README_MINIMAL_CP949_COMBAT_TEST.txt -Encoding UTF8
+          $out = 'TOEE_Korean_Patch_MINIMAL_CP949_EXE_TEST_20260812.zip'
+          Compress-Archive -Path package/* -DestinationPath $out -CompressionLevel Optimal
+          Get-FileHash $out -Algorithm SHA256 | Format-List
+          Get-Item $out | Format-List Name,Length
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: TOEE_Korean_MINIMAL_CP949_EXE_TEST_WIN2022
+          path: |
+            templeplus/Release/TemplePlus.exe
+            TOEE_Korean_Patch_MINIMAL_CP949_EXE_TEST_20260812.zip
+          if-no-files-found: error

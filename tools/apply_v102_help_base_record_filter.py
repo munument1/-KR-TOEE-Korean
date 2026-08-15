@@ -22,11 +22,24 @@ def patch_d20_help(text: str) -> str:
     if "KR_HELP_BASE_RECORD_FILTER" in text:
         raise RuntimeError("base help record filter already present")
 
+    class_anchor = """class HelpSystemReplacements : TempleFix\n{\npublic:\n\tstatic int TabLineParserPriliminary(TigTabParser const* tabParser, int lineIdxx, char** columns);\n"""
+    class_replacement = """class HelpSystemReplacements : TempleFix\n{\npublic:\n\tstatic int TabLineParserPriliminary(TigTabParser const* tabParser, int lineIdxx, char** columns);\n\tstatic int TabLineParserFinalFiltered(TigTabParser const* tabParser, int lineIdxx, char** columns);\n"""
+    text = replace_once(text, class_anchor, class_replacement, "final-filter declaration")
+
     anchor = """int HelpSystemReplacements::TabLineParserPriliminary(TigTabParser const* tabParser, int lineIdxx, char** columns)\n{\n\tauto tabEntry = (HelpTabEntry*)columns;\n\tD20HelpTopic * d20ht = new D20HelpTopic;\n"""
 
-    replacement = """int HelpSystemReplacements::TabLineParserPriliminary(TigTabParser const* tabParser, int lineIdxx, char** columns)\n{\n\tauto tabEntry = (HelpTabEntry*)columns;\n\n\t// KR_HELP_BASE_RECORD_FILTER\n\t// The frozen Korean mes/help.tab contains the canonical six-column TAG_*\n\t// records plus LF-delimited carry-over/reference lines with no TAB columns.\n\t// TigTabParser still invokes this preliminary callback for those short rows\n\t// and fills the missing columns with empty strings.  Without this guard the\n\t// legacy help linker registers the carry-over text itself as a help topic,\n\t// attaches it to TAG_ROOT and pollutes prev/next sibling navigation.\n\t//\n\t// Scope this strictly to the base help file. TemplePlus extension/user help\n\t// files retain their original behavior. All canonical records in the frozen\n\t// Korean base file use TAG_* identifiers.\n\tif (tabParser && tabParser->filename\n\t\t&& _stricmp(tabParser->filename, \"mes\\\\help.tab\") == 0\n\t\t&& strncmp(tabEntry->id, \"TAG_\", 4) != 0) {\n\t\tstatic bool filterLogged = false;\n\t\tif (!filterLogged) {\n\t\t\tlogger->info(\"KR_HELP_BASE_RECORD_FILTER enabled\");\n\t\t\tfilterLogged = true;\n\t\t}\n\t\treturn 0;\n\t}\n\n\tD20HelpTopic * d20ht = new D20HelpTopic;\n"""
+    replacement = """int HelpSystemReplacements::TabLineParserPriliminary(TigTabParser const* tabParser, int lineIdxx, char** columns)\n{\n\tauto tabEntry = (HelpTabEntry*)columns;\n\n\t// KR_HELP_BASE_RECORD_FILTER\n\t// The frozen Korean mes/help.tab contains the canonical six-column TAG_*\n\t// records plus LF-delimited carry-over/reference lines with no TAB columns.\n\t// TigTabParser invokes both parsing callbacks for those short rows. Keep them\n\t// out of BOTH passes: if preliminary skips a row but final still receives it,\n\t// vanilla 0x100E7CF0 performs a failed hashtable lookup and then dereferences\n\t// the unchecked output pointer, corrupting topic/link memory.\n\t//\n\t// Scope this strictly to the frozen base help file. TemplePlus extension/user\n\t// help files retain their original behavior. Canonical base records are TAG_*.\n\tif (tabParser && tabParser->filename\n\t\t&& _stricmp(tabParser->filename, \"mes\\\\help.tab\") == 0\n\t\t&& strncmp(tabEntry->id, \"TAG_\", 4) != 0) {\n\t\tstatic bool filterLogged = false;\n\t\tif (!filterLogged) {\n\t\t\tlogger->info(\"KR_HELP_BASE_RECORD_FILTER enabled\");\n\t\t\tfilterLogged = true;\n\t\t}\n\t\treturn 0;\n\t}\n\n\tD20HelpTopic * d20ht = new D20HelpTopic;\n"""
+    text = replace_once(text, anchor, replacement, "TabLineParserPriliminary filter")
 
-    return replace_once(text, anchor, replacement, "TabLineParserPriliminary filter")
+    final_init_anchor = "\ttabOrg.Init(addresses.HelpSystemTabLineParserFinal);\n"
+    final_init_replacement = "\ttabOrg.Init(HelpSystemReplacements::TabLineParserFinalFiltered);\n"
+    text = replace_once(text, final_init_anchor, final_init_replacement, "base final parser wrapper")
+
+    final_def_anchor = """D20HelpTopic* HelpSystem::GetTopic(int topicId)\n{\n"""
+    final_def = """int HelpSystemReplacements::TabLineParserFinalFiltered(TigTabParser const* tabParser, int lineIdxx, char** columns)\n{\n\tauto tabEntry = (HelpTabEntry*)columns;\n\tif (tabParser && tabParser->filename\n\t\t&& _stricmp(tabParser->filename, \"mes\\\\help.tab\") == 0\n\t\t&& strncmp(tabEntry->id, \"TAG_\", 4) != 0) {\n\t\tstatic bool finalFilterLogged = false;\n\t\tif (!finalFilterLogged) {\n\t\t\tlogger->info(\"KR_HELP_BASE_FINAL_FILTER enabled\");\n\t\t\tfinalFilterLogged = true;\n\t\t}\n\t\treturn 0;\n\t}\n\n\treturn addresses.HelpSystemTabLineParserFinal(tabParser, lineIdxx, columns);\n}\n\nD20HelpTopic* HelpSystem::GetTopic(int topicId)\n{\n"""
+    text = replace_once(text, final_def_anchor, final_def, "final-filter definition")
+
+    return text
 
 
 def main():
@@ -42,8 +55,12 @@ def main():
     verify, _ = read_source_text(path)
     required = [
         "KR_HELP_BASE_RECORD_FILTER",
+        "KR_HELP_BASE_FINAL_FILTER",
+        "TabLineParserFinalFiltered",
+        'tabOrg.Init(HelpSystemReplacements::TabLineParserFinalFiltered)',
         '_stricmp(tabParser->filename, "mes\\\\help.tab")',
         'strncmp(tabEntry->id, "TAG_", 4)',
+        'return addresses.HelpSystemTabLineParserFinal(tabParser, lineIdxx, columns);',
     ]
     for needle in required:
         if needle not in verify:
@@ -58,7 +75,7 @@ def main():
         if needle in verify:
             raise RuntimeError(f"forbidden legacy experiment marker present: {needle}")
 
-    print(f"HELP_BASE_RECORD_FILTER_OK [{encoding}]")
+    print(f"HELP_BASE_RECORD_FILTER_BOTH_PASSES_OK [{encoding}]")
 
 
 if __name__ == "__main__":

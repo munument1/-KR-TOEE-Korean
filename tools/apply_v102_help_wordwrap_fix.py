@@ -22,7 +22,7 @@ def patch_fonts_hooks(text: str) -> str:
     if "KR_HELP_WORDWRAP_CP949" in text:
         raise RuntimeError("FontWordWrap patch already present")
     if "KR_HELP_HITTEST_CP949" not in text:
-        raise RuntimeError("TEST8 CP949 hit-test patch must be applied first")
+        raise RuntimeError("CP949 hit-test patch must be applied first")
 
     type_anchor = """using FontHitTestFn = int(__cdecl *)(const char*, TigRect*, TigTextStyle*, int, int, int*);\nstatic FontHitTestFn orgFontHitTest = nullptr;\n"""
     type_replacement = type_anchor + """using FontWordWrapFn = int(__cdecl *)(const char*, TigRect*, TigTextStyle*);\nstatic FontWordWrapFn orgFontWordWrap = nullptr;\n"""
@@ -32,11 +32,41 @@ def patch_fonts_hooks(text: str) -> str:
     declaration_replacement = declaration_anchor + """\n\tstatic int FontWordWrap(const char* text, TigRect* extents, TigTextStyle* style);\n"""
     text = replace_once(text, declaration_anchor, declaration_replacement, "FontWordWrap declaration")
 
-    apply_anchor = """\torgFontHitTest = replaceFunction<int(__cdecl)(const char*, TigRect*, TigTextStyle*, int, int, int*)>(\n\t\t0x101EA7F0, FontHitTest);\n\tlogger->info(\"KR_HELP_HITTEST_CP949 enabled\");\n"""
+    apply_anchor = """\torgFontHitTest = replaceFunction<int(__cdecl)(const char*, TigRect*, TigTextStyle*, int, int, int*)>(\n\t\t0x101EA7F0, FontHitTest);\n\tlogger->info(\"KR_HELP_HITTEST_CP949 enabled (DirectWrite)\");\n"""
     apply_replacement = apply_anchor + """\t// Verified native ABI from temple.dll 0x101E8B20:\n\t// int __cdecl(const char* text, TigRect* extents, TigTextStyle* style).\n\t// The return value is a SOURCE-BYTE count consumed by ScrollBox 0x1018D1B0.\n\torgFontWordWrap = replaceFunction<int(__cdecl)(const char*, TigRect*, TigTextStyle*)>(\n\t\t0x101E8B20, FontWordWrap);\n\tlogger->info(\"KR_HELP_WORDWRAP_CP949 enabled\");\n"""
     text = replace_once(text, apply_anchor, apply_replacement, "FontWordWrap hook")
 
     append_code = r'''
+
+namespace {
+
+bool KrWordWrapIsCp949TrailByte(unsigned char ch) {
+	return (ch >= 0x41 && ch <= 0x5A)
+		|| (ch >= 0x61 && ch <= 0x7A)
+		|| (ch >= 0x81 && ch <= 0xFE);
+}
+
+size_t KrWordWrapNextCp949Unit(const char* text, size_t length, size_t pos) {
+	if (pos >= length) {
+		return length;
+	}
+
+	auto ch = static_cast<unsigned char>(text[pos]);
+	if (ch == '@' && pos + 1 < length) {
+		auto command = text[pos + 1];
+		if ((command >= '0' && command <= '9') || command == 't') {
+			return pos + 2;
+		}
+	}
+
+	if (ch >= 0x81 && ch <= 0xFE && pos + 1 < length
+		&& KrWordWrapIsCp949TrailByte(static_cast<unsigned char>(text[pos + 1]))) {
+		return pos + 2;
+	}
+	return pos + 1;
+}
+
+}
 
 int FontRenderFix::FontWordWrap(const char* text, TigRect* extents, TigTextStyle* style) {
 	// The original 0x101E8B20 is a byte/FNT word wrapper. It treats both bytes
@@ -78,7 +108,7 @@ int FontRenderFix::FontWordWrap(const char* text, TigRect* extents, TigTextStyle
 
 	for (size_t pos = 0; pos < length;) {
 		const auto ch = static_cast<unsigned char>(text[pos]);
-		const auto next = KrNextCp949Unit(text, length, pos);
+		const auto next = KrWordWrapNextCp949Unit(text, length, pos);
 
 		// The ScrollBox hands this routine one logical line including its newline.
 		// Consume the newline so the next native line starts after it.
@@ -102,17 +132,12 @@ int FontRenderFix::FontWordWrap(const char* text, TigRect* extents, TigTextStyle
 		}
 
 		if (metrics.width > extents->width) {
-			// Korean may wrap between syllables. If a DBCS character fitted after
-			// the last ASCII whitespace, use that fullest Korean boundary.
 			if (lastDbcsBreak > lastWhitespaceBreak) {
 				return static_cast<int>(lastDbcsBreak);
 			}
-			// Preserve normal word wrapping for ASCII words embedded in Korean text.
 			if (lastWhitespaceBreak > 0) {
 				return static_cast<int>(lastWhitespaceBreak);
 			}
-			// Long unbroken Korean/ASCII runs still must make progress. Never split
-			// a CP949 pair or an @x formatting command.
 			if (previousVisibleBoundary > 0) {
 				return static_cast<int>(previousVisibleBoundary);
 			}
@@ -159,6 +184,7 @@ def main():
         "0x101E8B20",
         "KR_HELP_WORDWRAP_CP949",
         "FontWordWrapFn",
+        "KrWordWrapNextCp949Unit",
         "previousVisibleBoundary",
         "source-byte count",
     ]

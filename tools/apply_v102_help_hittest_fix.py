@@ -168,7 +168,8 @@ int FontRenderFix::FontHitTest(const char* text, TigRect* extents, TigTextStyle*
 		// D20HelpLink.startPos/length.
 		if (prefixMetrics.width > previousWidth && relativeX < prefixMetrics.width) {
 			*textPos = static_cast<int>(pos);
-			logger->info(\"KR_HELP_DIAG HIT x={} y={} relX={} local={} prefixW={} fullW={}\",\n				x, y, relativeX, *textPos, prefixMetrics.width, fullMetrics.width);
+			logger->info("KR_HELP_DIAG HIT x={} y={} relX={} local={} prefixW={} fullW={}",
+				x, y, relativeX, *textPos, prefixMetrics.width, fullMetrics.width);
 			return 0;
 		}
 

@@ -1,4 +1,4 @@
-name: Build v1.0.2 Help TEST11
+name: Build v1.0.2 Help TEST14 DirectWrite
 
 on:
   push:
@@ -127,7 +127,7 @@ jobs:
           print("LONG_DESCRIPTION_VANILLA_POPUP_RESTORED")
           '@ | python -
 
-      - name: Apply CP949-aware legacy font hit-test fix
+      - name: Apply DirectWrite CP949 help hit-test fix
         shell: pwsh
         run: |
           python current/tools/apply_v102_help_hittest_fix.py templeplus
@@ -139,7 +139,7 @@ jobs:
           python current/tools/apply_v102_help_wordwrap_fix.py templeplus
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Filter malformed base help rows in both parser passes
+      - name: Filter malformed base help rows and add click diagnostics
         shell: pwsh
         run: |
           python current/tools/apply_v102_help_base_record_filter.py templeplus
@@ -153,7 +153,10 @@ jobs:
           $allowed = @(
             'Infrastructure/include/infrastructure/stringutil.h',
             'Infrastructure/stringutil.cpp',
+            'Infrastructure/include/graphics/textengine.h',
+            'Infrastructure/src/graphics/textengine.cpp',
             'TemplePlus/gamesystems/gamesystems.cpp',
+            'TemplePlus/fonts/fonts.h',
             'TemplePlus/fonts/fonts_layout.cpp',
             'TemplePlus/ui/widgets/widget_content.cpp',
             'TemplePlus/ui/ui_char.cpp',
@@ -162,19 +165,23 @@ jobs:
           )
           $unexpected = @($changed | Where-Object { $_ -notin $allowed })
           if ($unexpected.Count -gt 0) { throw ('Unexpected source changes: ' + ($unexpected -join ', ')) }
-          if ($changed.Count -ne 8) { throw "Expected exactly 8 changed source files, got $($changed.Count): $($changed -join ', ')" }
+          if ($changed.Count -ne 11) { throw "Expected exactly 11 changed source files, got $($changed.Count): $($changed -join ', ')" }
           $hooks = 'TemplePlus/fonts/fonts_hooks.cpp'
+          $layout = 'TemplePlus/fonts/fonts_layout.cpp'
+          $textEngineH = 'Infrastructure/include/graphics/textengine.h'
+          $textEngineCpp = 'Infrastructure/src/graphics/textengine.cpp'
           $help = 'TemplePlus/gamesystems/d20/d20_help.cpp'
           if (-not (Select-String -Path $hooks -SimpleMatch '0x101EA7F0')) { throw 'Verified FontHitTest hook missing' }
-          if (-not (Select-String -Path $hooks -SimpleMatch 'KR_HELP_HITTEST_CP949')) { throw 'CP949 hit-test marker missing' }
+          if (-not (Select-String -Path $hooks -SimpleMatch 'KR_HELP_HITTEST_CP949 enabled (DirectWrite)')) { throw 'DirectWrite hit-test marker missing' }
+          if (-not (Select-String -Path $layout -SimpleMatch 'KR_HELP_DWRITE_HITTEST')) { throw 'TextLayouter DirectWrite hit-test missing' }
+          if (-not (Select-String -Path $textEngineH -SimpleMatch 'HitTestText')) { throw 'TextEngine HitTest declaration missing' }
+          if (-not (Select-String -Path $textEngineCpp -SimpleMatch 'HitTestPoint')) { throw 'DirectWrite HitTestPoint call missing' }
           if (-not (Select-String -Path $hooks -SimpleMatch '0x101E8B20')) { throw 'Verified FontWordWrap hook missing' }
           if (-not (Select-String -Path $hooks -SimpleMatch 'KR_HELP_WORDWRAP_CP949')) { throw 'CP949 word-wrap marker missing' }
           if (-not (Select-String -Path $help -SimpleMatch 'KR_HELP_BASE_RECORD_FILTER')) { throw 'Preliminary base help filter missing' }
           if (-not (Select-String -Path $help -SimpleMatch 'KR_HELP_BASE_FINAL_FILTER')) { throw 'Final base help filter missing' }
-          if (-not (Select-String -Path $help -SimpleMatch 'tabOrg.Init(HelpSystemReplacements::TabLineParserFinalFiltered)')) { throw 'Base final parser wrapper not installed' }
-          if (-not (Select-String -Path $help -SimpleMatch 'return addresses.HelpSystemTabLineParserFinal(tabParser, lineIdxx, columns);')) { throw 'Native final parser forwarding missing' }
+          if (-not (Select-String -Path $help -SimpleMatch 'KR_HELP_CLICK_DIAG')) { throw 'TEST14 click diagnostic missing' }
           if (Select-String -Path $help -SimpleMatch 'KrHelpCp949BytesToUtf16Units') { throw 'TEST5 metadata conversion present' }
-          if (Select-String -Path $help -SimpleMatch 'KR_HELP_POSTPARSE') { throw 'Old diagnostic code present' }
           if (Select-String -Path $hooks -SimpleMatch '0x1018D720') { throw 'Forbidden TEST4 ScrollBox hook present' }
           if (Select-String -Path TemplePlus/ui/ui_char.cpp -SimpleMatch 'replaceFunction(0x10144400, LongDescriptionPopupCreate);') { throw 'Long-description replacement hook still present' }
           git diff --stat
@@ -203,7 +210,7 @@ jobs:
         shell: cmd
         env:
           TEMPLEPLUS_VERSION: 1.0.98
-          COMMIT_ID: KRCP949HL11
+          COMMIT_ID: KRCP949HT14
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -property installationPath`) do set VSROOT=%%i
           if not defined VSROOT exit /b 10
@@ -218,18 +225,20 @@ jobs:
           if (-not (Test-Path $exe)) { throw 'TemplePlus.exe missing' }
           $ascii = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($exe))
           if (-not $ascii.Contains('Korean text mode enabled (CP949)')) { throw 'CP949 marker missing' }
-          if (-not $ascii.Contains('KR_HELP_HITTEST_CP949 enabled')) { throw 'Hit-test marker missing' }
+          if (-not $ascii.Contains('KR_HELP_HITTEST_CP949 enabled (DirectWrite)')) { throw 'DirectWrite hit-test marker missing' }
+          if (-not $ascii.Contains('KR_HELP_DIAG DWRITE')) { throw 'DirectWrite diagnostic marker missing' }
           if (-not $ascii.Contains('KR_HELP_WORDWRAP_CP949 enabled')) { throw 'Word-wrap marker missing' }
           if (-not $ascii.Contains('KR_HELP_BASE_RECORD_FILTER enabled')) { throw 'Preliminary base filter marker missing' }
           if (-not $ascii.Contains('KR_HELP_BASE_FINAL_FILTER enabled')) { throw 'Final base filter marker missing' }
+          if (-not $ascii.Contains('KR_HELP_CLICK_DIAG enabled')) { throw 'Click diagnostic marker missing' }
           if ($ascii.Contains('KR_HELP_CLICK_FIX_ACTIVE')) { throw 'Unsafe TEST4 marker present' }
           if ($ascii.Contains('KR_HELP_POSTPARSE')) { throw 'Old diagnostic marker present' }
           Get-FileHash $exe -Algorithm SHA256 | Format-List
           Get-Item $exe | Format-List Name,Length
 
-      - name: Upload TEST11 executable
+      - name: Upload TEST14 executable
         uses: actions/upload-artifact@v4
         with:
-          name: TOEE_v1.0.2_HELP_TEST11_EXE
+          name: TOEE_v1.0.2_HELP_TEST14_DWRITE_EXE
           path: templeplus/Release/TemplePlus.exe
           if-no-files-found: error

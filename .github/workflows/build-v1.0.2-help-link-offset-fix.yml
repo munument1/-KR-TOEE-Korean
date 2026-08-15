@@ -158,7 +158,8 @@ jobs:
           if (-not (Test-Path $exe)) { throw 'TemplePlus.exe missing' }
           $ascii = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($exe))
           if (-not $ascii.Contains('Korean text mode enabled (CP949)')) { throw 'CP949 marker missing' }
-          if (-not $ascii.Contains('KrHelpCp949BytesToUtf16Units')) { throw 'Help offset fix marker missing' }
+          # The optimized release binary is not required to retain the C++ helper symbol name.
+          # Source validation above already verifies that the narrow help offset fix was applied.
           if ($ascii.Contains('KR_HELP_POSTPARSE')) { throw 'Diagnostic marker present' }
           if ($ascii.Contains('KR_HELP_CLICK_FIX_ACTIVE')) { throw 'Unsafe help click marker present' }
           Get-FileHash $exe -Algorithm SHA256 | Format-List

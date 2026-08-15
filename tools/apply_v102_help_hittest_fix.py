@@ -168,6 +168,7 @@ int FontRenderFix::FontHitTest(const char* text, TigRect* extents, TigTextStyle*
 		// D20HelpLink.startPos/length.
 		if (prefixMetrics.width > previousWidth && relativeX < prefixMetrics.width) {
 			*textPos = static_cast<int>(pos);
+			logger->info(\"KR_HELP_DIAG HIT x={} y={} relX={} local={} prefixW={} fullW={}\",\n				x, y, relativeX, *textPos, prefixMetrics.width, fullMetrics.width);
 			return 0;
 		}
 
@@ -197,6 +198,7 @@ def main():
     required = [
         "0x101EA7F0",
         "KR_HELP_HITTEST_CP949",
+        "KR_HELP_DIAG HIT",
         "KrNextCp949Unit",
         "D20HelpLink.startPos/length",
     ]
@@ -204,7 +206,7 @@ def main():
         if needle not in verify:
             raise RuntimeError(f"verification failed: missing {needle}")
 
-    print(f"HELP_HITTEST_PATCH_OK [{encoding}]")
+    print(f"HELP_HITTEST_DIAG_PATCH_OK [{encoding}]")
 
 
 if __name__ == "__main__":

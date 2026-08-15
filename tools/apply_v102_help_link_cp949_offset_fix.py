@@ -60,13 +60,15 @@ def patch_help_link_offsets(root: Path):
 }
 '''
 
-    new = r'''namespace {
+    # IMPORTANT: this is deliberately a normal triple-quoted Python string,
+    # not a raw string. The \t sequences below therefore become real tabs in
+    # the generated C++ rather than literal backslash-t tokens.
+    new = '''namespace {
 
-// The vanilla help parser stores D20HelpLink::startPos/endPos as byte counts
-// into the formatted legacy string. In the Korean build those strings are
-// CP949 but the replacement DirectWrite renderer works in UTF-16 code units.
-// Convert the two range values immediately after vanilla has parsed a link.
-// ASCII-only links are unchanged because byte count == UTF-16 unit count.
+// Vanilla help link positions are byte offsets into the legacy formatted
+// string. Korean resources use CP949 while TemplePlus renders through UTF-16.
+// Convert the parsed range to UTF-16 code-unit positions so the legacy help UI
+// and the replacement text renderer agree on link placement.
 int KrHelpCp949BytesToUtf16Units(const char* text, int byteCount)
 {
 \tif (!text || byteCount < 0) {
@@ -94,9 +96,6 @@ int HelpSystem::LinkParser(D20HelpLink* d20hl, char* topicTitle, char** pos1, ch
 {
 \tint result = orgLinkParser(d20hl, topicTitle, pos1, pos2, offsetOut);
 
-\t// Only touch records that look like a successfully parsed help/roll link.
-\t// This avoids depending on the undocumented return convention of the
-\t// original function and keeps malformed help records on the vanilla path.
 \tif (!d20hl || !topicTitle) {
 \t\treturn result;
 \t}
